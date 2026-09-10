@@ -305,7 +305,7 @@ export function AppLayout() {
             <div className="flex items-center gap-0.5">
               <button
                 onClick={togglePrivacyMode}
-                className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
+                className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent cursor-pointer"
                 title={privacyMode ? t('privacy.show') : t('privacy.hide')}
                 aria-label={privacyMode ? t('privacy.show') : t('privacy.hide')}
               >
@@ -317,7 +317,7 @@ export function AppLayout() {
               {chatAvailable && (
                 <button
                   onClick={() => setChatOpen(true)}
-                  className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
+                  className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent cursor-pointer"
                   title={`${t('agents.globalChat.title', 'Chat')} (${isMac ? '⌘J' : 'Ctrl+J'})`}
                   aria-label={t('agents.globalChat.openHint', 'Open chat (⌘J)')}
                 >
@@ -326,7 +326,7 @@ export function AppLayout() {
               )}
               <button
                 onClick={toggleTheme}
-                className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent"
+                className="text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent cursor-pointer"
                 title={
                   isDark ? t('settings.themeLight') : t('settings.themeDark')
                 }
@@ -345,7 +345,7 @@ export function AppLayout() {
               type="button"
               onClick={() => setPaletteOpen(true)}
               className={cn(
-                'group flex w-full items-center gap-2 rounded-lg border border-sidebar-border/80 bg-sidebar-accent/40 px-3 py-2',
+                'group flex w-full items-center gap-2 rounded-lg border border-sidebar-border/80 bg-sidebar-accent/40 px-3 py-2 cursor-pointer',
                 'text-[12.5px] text-sidebar-muted transition-all',
                 'hover:bg-sidebar-accent hover:text-sidebar-foreground hover:border-sidebar-border',
               )}

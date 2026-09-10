@@ -232,7 +232,7 @@ function RecurringTab() {
                     <td className="py-3 pr-4 sm:pr-5">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer"
                           onClick={() => { setEditing(rt); setDialogOpen(true) }}
                           aria-label={t('common.edit')}
                           title={t('common.edit')}
@@ -240,7 +240,7 @@ function RecurringTab() {
                           <Pencil size={13} />
                         </button>
                         <button
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
                           onClick={() => setDeletingRecurring(rt)}
                           disabled={deleteMutation.isPending}
                           aria-label={t('common.delete')}

@@ -325,7 +325,7 @@ export function AppLayout() {
               <button
                 onClick={togglePrivacyMode}
                 className={cn(
-                  'text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent',
+                  'text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent cursor-pointer',
                   desktopSidebarCollapsed && 'lg:flex lg:h-9 lg:w-9 lg:items-center lg:justify-center lg:p-0 lg:[&>svg]:h-[18px] lg:[&>svg]:w-[18px]',
                 )}
                 title={privacyMode ? t('privacy.show') : t('privacy.hide')}
@@ -340,7 +340,7 @@ export function AppLayout() {
                 <button
                   onClick={() => setChatOpen(true)}
                   className={cn(
-                    'text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent',
+                    'text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent cursor-pointer',
                     desktopSidebarCollapsed && 'lg:flex lg:h-9 lg:w-9 lg:items-center lg:justify-center lg:p-0 lg:[&>svg]:h-[18px] lg:[&>svg]:w-[18px]',
                   )}
                   title={`${t('agents.globalChat.title', 'Chat')} (${isMac ? '⌘J' : 'Ctrl+J'})`}
@@ -352,7 +352,7 @@ export function AppLayout() {
               <button
                 onClick={toggleTheme}
                 className={cn(
-                  'text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent',
+                  'text-sidebar-muted hover:text-sidebar-foreground transition-colors p-1 rounded-md hover:bg-sidebar-accent cursor-pointer',
                   desktopSidebarCollapsed && 'lg:flex lg:h-9 lg:w-9 lg:items-center lg:justify-center lg:p-0 lg:[&>svg]:h-[18px] lg:[&>svg]:w-[18px]',
                 )}
                 title={

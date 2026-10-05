@@ -151,7 +151,7 @@ export default function BudgetsPage() {
         action={
           <div className="flex items-center gap-1">
             <button
-              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base"
+              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base cursor-pointer"
               onClick={() => {
                 const [y, m] = selectedMonth.split('-').map(Number)
                 const d = new Date(y, m - 2, 1)
@@ -181,7 +181,7 @@ export default function BudgetsPage() {
               </PopoverContent>
             </Popover>
             <button
-              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base"
+              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base cursor-pointer"
               onClick={() => {
                 const [y, m] = selectedMonth.split('-').map(Number)
                 const d = new Date(y, m, 1)

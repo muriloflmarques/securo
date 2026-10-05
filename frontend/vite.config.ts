@@ -44,7 +44,10 @@ export default defineConfig(async ({ mode }) => {
     server: {
       port: 5173,
       host: '0.0.0.0',
-      allowedHosts: getFrontendHost(frontendUrl),
+      allowedHosts: [
+          ...getFrontendHost(frontendUrl),
+          'murilolobatoserver.tailcb0d40.ts.net',
+      ],
       proxy: {
         '/api': {
           target: backendUrl ?? 'http://localhost:8000',

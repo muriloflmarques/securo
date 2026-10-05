@@ -71,7 +71,8 @@ x-backend-env: &backend-env
   AGENTS_EMBEDDING_MODEL: ${AGENTS_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
 
 x-backend-base: &backend-base
-  image: ghcr.io/securo-finance/securo-backend:latest
+  build:
+    context: ./backend
   environment: *backend-env
   # Lets a connection point at a model server running on the host (LM Studio,
   # Ollama, llama.cpp) as http://host.docker.internal:<port>. Docker Desktop
@@ -123,7 +124,8 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
-    image: ghcr.io/securo-finance/securo-frontend:latest
+      build:
+        context: ./frontend
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:8080"
     environment:

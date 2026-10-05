@@ -58,6 +58,7 @@ import { resolveDateFnsLocale } from '@/lib/date-fns-locale'
 import type { Rule, Transaction } from '@/types'
 import { formatCurrency } from '@/lib/format'
 import { shouldShowPendingBadge } from '@/lib/transaction-status'
+import { getDashboardBalances } from '@/lib/dashboard-balances'
 
 function formatDate(dateStr: string, locale = 'pt-BR') {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString(locale)
@@ -402,9 +403,13 @@ export default function DashboardPage() {
     const scoped = activeAccountIds ? all.filter((a) => activeAccountIds.includes(a.id)) : all
     return scoped.filter((a) => a.type === 'checking' || a.type === 'savings')
   }, [accountsList, activeAccountIds])
-  const availableBalance = availableBalanceAccounts.reduce(
+  const fallbackAvailableBalance = availableBalanceAccounts.reduce(
     (sum, a) => sum + Number(a.balance_primary ?? a.current_balance), 0,
   )
+  const {
+    availableBalance,
+    projectedAvailableBalance,
+  } = getDashboardBalances(summary, fallbackAvailableBalance)
   const sortedAvailableBalanceAccounts = useMemo(
     () => sortAccountsByAbsoluteBalance(availableBalanceAccounts, (a) => a.balance_primary ?? a.current_balance),
     [availableBalanceAccounts],
@@ -431,6 +436,7 @@ export default function DashboardPage() {
   const projectedExpenses = Number(summary?.projected_expenses_primary ?? summary?.projected_expenses ?? expenses)
   const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0
   const isCurrentMonth = selectedMonth === currentMonth()
+  const shouldShowProjectedAvailableBalance = selectedMonth >= currentMonth()
   const daysElapsed = isCurrentMonth ? new Date().getDate() : monthLastDay(selectedMonth)
   const daysInMonth = monthLastDay(selectedMonth)
   const projectedSpend = expenses > 0 && isCurrentMonth && daysElapsed > 0
@@ -623,7 +629,7 @@ export default function DashboardPage() {
         action={
           <div className="flex items-center gap-1">
             <button
-              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base"
+              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base cursor-pointer"
               onClick={() => handleMonthChange(shiftMonth(selectedMonth, -1))}
             >&#8249;</button>
             <Popover open={headerCalOpen} onOpenChange={setHeaderCalOpen}>
@@ -650,7 +656,7 @@ export default function DashboardPage() {
               </PopoverContent>
             </Popover>
             <button
-              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base"
+              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:border-border hover:text-foreground transition-all text-base cursor-pointer"
               onClick={() => handleMonthChange(shiftMonth(selectedMonth, 1))}
             >&#8250;</button>
           </div>
@@ -661,7 +667,6 @@ export default function DashboardPage() {
       <div className="bg-card rounded-xl border border-border shadow-sm mb-5 px-5 pt-5 pb-4">
         {/* Available balance in checking/savings accounts */}
         <div className="pb-4 mb-4 border-b border-border">
-          <p className="text-xs font-semibold text-muted-foreground mb-1">{t('dashboard.availableBalance')}</p>
           {summaryLoading || accountsUnavailable ? (
             <Skeleton className="h-9 w-40" />
           ) : (
@@ -670,9 +675,24 @@ export default function DashboardPage() {
                   colour is left to mean direction (income, expenses) and
                   exception (a negative balance), so it still says something
                   when it does appear. */}
-              <p className={`text-3xl font-bold tabular-nums leading-tight ${availableBalance < 0 ? 'text-rose-500' : 'text-foreground'}`}>
-                {mask(formatCurrency(availableBalance, primaryCurrency, locale))}
-              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">{t('dashboard.availableBalance')}</p>
+                  <p className={`text-3xl font-bold tabular-nums leading-tight ${availableBalance < 0 ? 'text-rose-500' : 'text-foreground'}`}>
+                    {mask(formatCurrency(availableBalance, primaryCurrency, locale))}
+                  </p>
+                </div>
+                {shouldShowProjectedAvailableBalance && (
+                  <div className="min-w-0 sm:text-right">
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">
+                      {t('dashboard.projectedAvailableBalance')}
+                    </p>
+                    <p className={`text-3xl font-bold tabular-nums leading-tight ${projectedAvailableBalance < 0 ? 'text-rose-500' : 'text-foreground'}`}>
+                      {mask(formatCurrency(projectedAvailableBalance, primaryCurrency, locale))}
+                    </p>
+                  </div>
+                )}
+              </div>
               {sortedAvailableBalanceAccounts.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {sortedAvailableBalanceAccounts.map((acc) => {

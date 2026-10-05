@@ -504,6 +504,89 @@ async def test_get_summary_with_balance_date(session: AsyncSession, test_user, t
     assert total == pytest.approx(1000.0)
 
 
+@pytest.mark.asyncio
+async def test_get_summary_projected_available_balance_includes_spendable_recurring(
+    session: AsyncSession, test_user, test_workspace
+):
+    today = date.today()
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    account = await _make_account(session, test_user.id, "Spendable forecast")
+    await _add_txn(
+        session,
+        test_user.id,
+        account.id,
+        1000,
+        "credit",
+        today,
+        source="opening_balance",
+    )
+    session.add(RecurringTransaction(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        account_id=account.id,
+        description="Subscription",
+        amount=Decimal("30"),
+        type="debit",
+        frequency="monthly",
+        start_date=next_month,
+        next_occurrence=next_month,
+        currency="BRL",
+    ))
+    await session.commit()
+
+    summary = await get_summary(
+        session, test_workspace.id, test_user.id, month=next_month
+    )
+
+    assert summary.available_balance_primary == pytest.approx(1000.0)
+    assert summary.projected_available_balance_primary == pytest.approx(970.0)
+    assert summary.projected_available_delta_primary == pytest.approx(-30.0)
+
+
+@pytest.mark.asyncio
+async def test_get_summary_projected_available_balance_excludes_credit_cards(
+    session: AsyncSession, test_user, test_workspace
+):
+    today = date.today()
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    checking = await _make_account(session, test_user.id, "Main checking")
+    card = await _make_account(
+        session, test_user.id, "Card forecast", acc_type="credit_card"
+    )
+    await _add_txn(
+        session,
+        test_user.id,
+        checking.id,
+        1000,
+        "credit",
+        today,
+        source="opening_balance",
+    )
+    session.add(RecurringTransaction(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        account_id=card.id,
+        description="Card subscription",
+        amount=Decimal("40"),
+        type="debit",
+        frequency="monthly",
+        start_date=next_month,
+        next_occurrence=next_month,
+        currency="BRL",
+    ))
+    await session.commit()
+
+    summary = await get_summary(
+        session, test_workspace.id, test_user.id, month=next_month
+    )
+
+    assert summary.available_balance_primary == pytest.approx(1000.0)
+    assert summary.projected_available_balance_primary == pytest.approx(1000.0)
+    assert summary.projected_available_delta_primary == pytest.approx(0.0)
+
+
 # ---------------------------------------------------------------------------
 # get_spending_by_category
 # ---------------------------------------------------------------------------

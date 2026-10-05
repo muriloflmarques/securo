@@ -90,6 +90,9 @@ const summary: DashboardSummary = {
   total_balance_primary: 500,
   projected_balance: { USD: 500 },
   projected_balance_primary: 500,
+  available_balance_primary: 1000,
+  projected_available_balance_primary: 970,
+  projected_available_delta_primary: -30,
   balance_date: '2026-09-12',
   monthly_income: 0,
   monthly_expenses: 0,
@@ -134,5 +137,16 @@ describe('Dashboard net worth breakdown', () => {
     const tooltip = await screen.findByRole('tooltip')
     const cardRow = within(tooltip).getByText(t('dashboard.creditCardBalance')).parentElement!
     expect(cardRow).toHaveTextContent(formatCurrency(-500, 'USD', 'en-US'))
+  })
+
+  it('shows the projected available balance in the headline card', async () => {
+    renderWithProviders(
+      <TooltipProvider delayDuration={0}>
+        <DashboardPage />
+      </TooltipProvider>,
+    )
+
+    await screen.findByText(t('dashboard.projectedAvailableBalance'))
+    expect(screen.getByText(formatCurrency(970, 'USD', 'en-US'))).toBeInTheDocument()
   })
 })

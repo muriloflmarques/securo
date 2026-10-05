@@ -8,6 +8,9 @@ class DashboardSummary(BaseModel):
     total_balance_primary: float = 0.0  # consolidated in primary currency
     projected_balance: dict[str, float] = Field(default_factory=dict)  # current balance plus forecast rows
     projected_balance_primary: float = 0.0  # consolidated projected balance
+    available_balance_primary: float = 0.0  # checking/savings current balance
+    projected_available_balance_primary: float = 0.0  # checking/savings plus forecast rows
+    projected_available_delta_primary: float = 0.0
     balance_date: str  # ISO date string, e.g. "2026-03-02"
     monthly_income: float
     monthly_expenses: float

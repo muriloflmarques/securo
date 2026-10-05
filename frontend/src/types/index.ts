@@ -695,6 +695,9 @@ export interface DashboardSummary {
   total_balance_primary: number
   projected_balance: Record<string, number>
   projected_balance_primary: number
+  available_balance_primary: number
+  projected_available_balance_primary: number
+  projected_available_delta_primary: number
   balance_date: string
   monthly_income: number
   monthly_expenses: number

@@ -28,6 +28,7 @@ from app.services.admin_service import get_credit_card_accounting_mode
 from app.services.recurring_transaction_service import get_occurrences_in_range
 from app.services.asset_service import get_asset_values_at
 from app.services.fx_rate_service import _resolve_rate, convert
+from app.services.projected_balance_service import get_projected_available_balance
 from app.models.user import User
 
 
@@ -477,6 +478,20 @@ async def get_summary(
         converted, _ = await convert(session, Decimal(str(amount)), currency, primary_currency, cutoff)
         projected_balance_primary += float(converted)
 
+    (
+        available_balance_primary,
+        projected_available_balance_primary,
+        projected_available_delta_primary,
+    ) = await get_projected_available_balance(
+        session,
+        workspace_id,
+        month_start,
+        month_end,
+        cutoff,
+        primary_currency,
+        account_ids,
+    )
+
     # Convert income/expenses to primary currency using amount_primary when available
     # Use real-only totals (without projections) to avoid double-counting;
     # projections are added separately below via convert().
@@ -625,6 +640,9 @@ async def get_summary(
         total_balance_primary=round(total_balance_primary, 2),
         projected_balance=projected_balance,
         projected_balance_primary=round(projected_balance_primary, 2),
+        available_balance_primary=available_balance_primary,
+        projected_available_balance_primary=projected_available_balance_primary,
+        projected_available_delta_primary=projected_available_delta_primary,
         balance_date=cutoff.isoformat(),
         monthly_income=real_monthly_income,
         monthly_expenses=abs(real_monthly_expenses),

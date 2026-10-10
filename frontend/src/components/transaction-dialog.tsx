@@ -1323,6 +1323,7 @@ function TransactionForm({
                   onChange={(e) => setFrequency(e.target.value as RecurringTransaction['frequency'])}
                 >
                   <option value="monthly">{t('recurring.monthly')}</option>
+                  <option value="bimonthly">{t('recurring.bimonthly')}</option>
                   <option value="quarterly">{t('recurring.quarterly')}</option>
                   <option value="semiannual">{t('recurring.semiannual')}</option>
                   <option value="weekly">{t('recurring.weekly')}</option>
@@ -1351,6 +1352,7 @@ function TransactionForm({
                   onChange={(e) => setInstallmentFrequency(e.target.value as RecurringTransaction['frequency'])}
                 >
                   <option value="monthly">{t('recurring.monthly')}</option>
+                  <option value="bimonthly">{t('recurring.bimonthly')}</option>
                   <option value="quarterly">{t('recurring.quarterly')}</option>
                   <option value="semiannual">{t('recurring.semiannual')}</option>
                   <option value="weekly">{t('recurring.weekly')}</option>

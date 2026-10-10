@@ -491,6 +491,7 @@
         "weekly": "Weekly",
         "biweekly": "Every 2 weeks",
         "monthly": "Monthly",
+        "bimonthly": "Every 2 months",
         "quarterly": "Quarterly",
         "semiannual": "Every 6 months",
         "yearly": "Yearly"
@@ -1422,6 +1423,7 @@
     "income": "Income",
     "frequency": "Frequency",
     "monthly": "Monthly",
+    "bimonthly": "Every 2 months",
     "quarterly": "Quarterly",
     "semiannual": "Every 6 months",
     "weekly": "Weekly",

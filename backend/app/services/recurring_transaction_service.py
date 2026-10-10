@@ -181,6 +181,8 @@ def _advance_date(
     target_day = intended_day if intended_day else current.day
     if frequency == "monthly":
         return _advance_months(current, 1, target_day)
+    if frequency == "bimonthly":
+        return _advance_months(current, 2, target_day)
     if frequency == "quarterly":
         return _advance_months(current, 3, target_day)
     if frequency == "semiannual":

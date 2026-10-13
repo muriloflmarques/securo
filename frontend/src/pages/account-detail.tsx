@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, addDays, addMonths, parseISO } from 'date-fns'
-import { accounts, dashboard, transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
+import { accounts, dashboard, transactions, recurring, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
 import { localDateString } from '@/lib/date-utils'
 import { applyTransactionToBalance, excludeMaterializedProjections, transactionAmountForBalance } from '@/lib/account-detail-utils'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import type { CreditCardBill, ProjectedTransaction, Transaction } from '@/types'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, ArrowLeftRight, CalendarClock, ChevronLeft, ChevronRight, Clock, EyeClosed, HelpCircle, Paperclip, Pencil, Plus, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Clock, EyeClosed, HelpCircle, Paperclip, Pencil, Plus, X } from 'lucide-react'
 import { MobileTransactionRow } from '@/components/mobile-transaction-row'
 import { CategoryIcon } from '@/components/category-icon'
 import { ProjectedTransactionBadge } from '@/components/projected-transaction-badge'
@@ -23,7 +23,7 @@ import { TransactionDialog, type TransactionSavePayload } from '@/components/tra
 import { extractApiError } from '@/lib/api-errors'
 import { TransferDialog } from '@/components/transfer-dialog'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -274,6 +274,7 @@ export default function AccountDetailPage() {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const [projectedToConvert, setProjectedToConvert] = useState<TxWithBalance | null>(null)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const {
     mutation: createMutation,
@@ -624,6 +625,19 @@ export default function AccountDetailPage() {
       invalidateFinancialQueries(queryClient)
       setTransferDialogOpen(false)
       toast.success(t('transactions.transferCreated'))
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error))
+    },
+  })
+
+  const materializeProjectedMutation = useMutation({
+    mutationFn: ({ recurringId, date }: { recurringId: string; date: string }) =>
+      recurring.materializeOccurrence(recurringId, date),
+    onSuccess: () => {
+      invalidateFinancialQueries(queryClient)
+      setProjectedToConvert(null)
+      toast.success(t('transactions.projectedConverted', 'Projected transaction converted'))
     },
     onError: (error) => {
       toast.error(extractApiError(error))
@@ -1607,6 +1621,10 @@ export default function AccountDetailPage() {
                     const isTransfer = !!tx.transfer_pair_id
                     const isIgnored = tx.is_ignored
                     const isVirtual = tx.virtual === true
+                    const canMaterializeProjected = canWrite
+                      && isVirtual
+                      && tx.recurring_transaction_id != null
+                      && tx.date > localDateString()
                     return (
                       <tr
                         key={tx.id}
@@ -1646,6 +1664,23 @@ export default function AccountDetailPage() {
                             )}
                             {isVirtual && (
                               <ProjectedTransactionBadge />
+                            )}
+                            {canMaterializeProjected && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                title={t('transactions.convertProjected', 'Convert projected transaction')}
+                                aria-label={t('transactions.convertProjected', 'Convert projected transaction')}
+                                disabled={materializeProjectedMutation.isPending}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setProjectedToConvert(tx)
+                                }}
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              </Button>
                             )}
                             {tx.recurring_transaction_id != null && !isVirtual && (
                               <span
@@ -1721,6 +1756,53 @@ export default function AccountDetailPage() {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={projectedToConvert != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !materializeProjectedMutation.isPending) {
+            setProjectedToConvert(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton={!materializeProjectedMutation.isPending}>
+          <DialogHeader>
+            <DialogTitle>
+              {t('transactions.convertProjectedTitle', 'Convert projected transaction?')}
+            </DialogTitle>
+            <DialogDescription>
+              {t(
+                'transactions.convertProjectedDescription',
+                'This action is not reversible. Once converted, this projected transaction becomes a recurring transaction that can be edited or deleted.',
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={materializeProjectedMutation.isPending}
+              onClick={() => setProjectedToConvert(null)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              disabled={materializeProjectedMutation.isPending || projectedToConvert?.recurring_transaction_id == null}
+              onClick={() => {
+                if (projectedToConvert?.recurring_transaction_id == null) return
+                materializeProjectedMutation.mutate({
+                  recurringId: projectedToConvert.recurring_transaction_id,
+                  date: projectedToConvert.date,
+                })
+              }}
+            >
+              <CheckCircle2 className="mr-1 h-4 w-4" />
+              {t('transactions.convertProjectedAction', 'Convert')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <TransactionDialog
         open={dialogOpen}

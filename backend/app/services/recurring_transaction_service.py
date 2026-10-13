@@ -154,6 +154,104 @@ async def delete_recurring_transaction(
     return True
 
 
+async def _existing_materialized_occurrence(
+    session: AsyncSession,
+    recurring: RecurringTransaction,
+    occurrence_date: date,
+) -> Optional[Transaction]:
+    window_days = 2 if recurring.frequency == "weekly" else 5
+    result = await session.execute(
+        select(Transaction)
+        .where(
+            Transaction.recurring_transaction_id == recurring.id,
+            Transaction.date >= occurrence_date - timedelta(days=window_days),
+            Transaction.date <= occurrence_date + timedelta(days=window_days),
+        )
+        .order_by(Transaction.date != occurrence_date)
+    )
+    return result.scalars().first()
+
+
+async def _materialize_occurrence(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    recurring: RecurringTransaction,
+    occurrence_date: date,
+) -> Optional[Transaction]:
+    """Create or link the transaction for one effective recurring occurrence."""
+    existing = await _existing_materialized_occurrence(
+        session, recurring, occurrence_date
+    )
+    if existing is not None:
+        return existing
+
+    existing_real = await recurring_match_service.find_real_tx_for_occurrence(
+        session, recurring, occurrence_date
+    )
+    if existing_real is not None:
+        existing_real.recurring_transaction_id = recurring.id
+        await session.flush()
+        return existing_real
+
+    account = await session.get(Account, recurring.account_id)
+    is_synced_account = account is not None and account.connection_id is not None
+    transaction = Transaction(
+        user_id=user_id,
+        account_id=recurring.account_id,
+        category_id=recurring.category_id,
+        description=recurring.description,
+        amount=recurring.amount,
+        currency=recurring.currency,
+        date=occurrence_date,
+        type=recurring.type,
+        source="recurring",
+        status="pending" if is_synced_account else "posted",
+        recurring_transaction_id=recurring.id,
+    )
+    apply_effective_date(transaction, account)
+    session.add(transaction)
+    await session.flush()
+    await stamp_primary_amount(session, user_id, transaction)
+    return transaction
+
+
+async def materialize_projected_occurrence(
+    session: AsyncSession,
+    recurring_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    occurrence_date: date,
+) -> Optional[Transaction]:
+    recurring = await get_recurring_transaction(session, recurring_id, workspace_id)
+    if not recurring:
+        return None
+    if not recurring.is_active:
+        raise ValueError("Recurring transaction is inactive")
+    if recurring.account_id is None:
+        raise ValueError("Recurring transaction has no account")
+
+    today = today_in(await get_workspace_timezone(session, workspace_id))
+    if occurrence_date <= today:
+        raise ValueError("Only future projected occurrences can be converted")
+
+    scheduled = get_occurrences_in_range(
+        recurring.start_date,
+        recurring.frequency,
+        recurring.end_date,
+        occurrence_date,
+        occurrence_date + timedelta(days=1),
+        intended_day=recurring.day_of_month or recurring.start_date.day,
+        weekend_adjustment=recurring.weekend_adjustment,
+    )
+    if occurrence_date not in scheduled:
+        raise ValueError("Date is not a projected occurrence for this recurring transaction")
+
+    transaction = await _materialize_occurrence(session, user_id, recurring, occurrence_date)
+    await session.commit()
+    await session.refresh(transaction)
+    return transaction
+
+
 def _advance_months(current: date, months: int, intended_day: int) -> date:
     """Advance by calendar months, clamping only in a shorter target month."""
     month_index = current.month - 1 + months
@@ -341,51 +439,16 @@ async def generate_pending(
 
             # If a real transaction (synced/imported/manual) already covers this
             # occurrence, link it to the bill instead of writing a duplicate
-            # placeholder (issue #116). Otherwise materialize the placeholder,
-            # stamped with the recurring link so a later synced charge merges
-            # into it rather than duplicating.
-            existing_real = await recurring_match_service.find_real_tx_for_occurrence(
+            # placeholder (issue #116). If the user already materialized this
+            # projected occurrence manually, leave that transaction in place and
+            # advance the schedule pointer when the due date arrives.
+            before = await _existing_materialized_occurrence(
                 session, recurring, effective_occurrence
             )
-            if existing_real is not None:
-                existing_real.recurring_transaction_id = recurring.id
-            else:
-                account = await session.get(Account, recurring.account_id)
-                # Only occurrences that already came due reach this point, so
-                # the row is a charge that happened rather than a forecast.
-                # Whether to trust that depends on who else writes to the
-                # account:
-                #
-                # Bank-synced: the incoming charge often fails to match this
-                # placeholder, and two posted rows for one charge inflate the
-                # balance silently. Holding the placeholder as pending keeps
-                # it out of the actuals until something confirms it, so a
-                # missed match costs a visible stale row instead of a wrong
-                # number. Improving the match itself is the real fix (#588);
-                # this is the guard until then.
-                #
-                # Manual: nothing else ever writes to the account, so there is
-                # no charge to duplicate against and nothing that would ever
-                # post the row. Pending there buys no safety and stops the
-                # balance from moving.
-                is_synced_account = account is not None and account.connection_id is not None
-                transaction = Transaction(
-                    user_id=user_id,
-                    account_id=recurring.account_id,
-                    category_id=recurring.category_id,
-                    description=recurring.description,
-                    amount=recurring.amount,
-                    currency=recurring.currency,
-                    date=effective_occurrence,
-                    type=recurring.type,
-                    source="recurring",
-                    status="pending" if is_synced_account else "posted",
-                    recurring_transaction_id=recurring.id,
-                )
-                apply_effective_date(transaction, account)
-                session.add(transaction)
-                await session.flush()
-                await stamp_primary_amount(session, user_id, transaction)
+            transaction = await _materialize_occurrence(
+                session, user_id, recurring, effective_occurrence
+            )
+            if before is None and transaction is not None:
                 count += 1
 
             # Advance to next occurrence

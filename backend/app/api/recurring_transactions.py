@@ -10,11 +10,13 @@ from app.core.workspace_context import (
     current_writable_workspace,
 )
 from app.schemas.recurring_transaction import (
+    RecurringOccurrenceMaterialize,
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
 )
-from app.services import recurring_transaction_service
+from app.schemas.transaction import TransactionRead
+from app.services import recurring_transaction_service, transaction_service
 
 router = APIRouter(prefix="/api/recurring-transactions", tags=["recurring-transactions"])
 
@@ -70,6 +72,25 @@ async def delete_recurring_transaction(
     )
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurring transaction not found")
+
+
+@router.post("/{recurring_id}/materialize", response_model=TransactionRead, status_code=status.HTTP_201_CREATED)
+async def materialize_projected_occurrence(
+    recurring_id: uuid.UUID,
+    data: RecurringOccurrenceMaterialize,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        transaction = await recurring_transaction_service.materialize_projected_occurrence(
+            session, recurring_id, ctx.workspace.id, ctx.user_id, data.date
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if not transaction:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurring transaction not found")
+    hydrated = await transaction_service.get_transaction(session, transaction.id, ctx.workspace.id)
+    return hydrated or transaction
 
 
 @router.post("/generate")

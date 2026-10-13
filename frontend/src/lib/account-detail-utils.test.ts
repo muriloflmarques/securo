@@ -65,10 +65,27 @@ describe('excludeMaterializedProjections', () => {
     ]
 
     const result = excludeMaterializedProjections(projections, [
-      { recurring_transaction_id: 'rec-1', date: '2026-08-25' },
-      { recurring_transaction_id: null, date: '2026-09-25' },
+      { recurring_transaction_id: 'rec-1', recurring_occurrence_date: null, date: '2026-08-25' },
+      { recurring_transaction_id: null, recurring_occurrence_date: null, date: '2026-09-25' },
     ])
 
     expect(result).toEqual([projections[1], projections[2]])
+  })
+
+  it('keeps an edited recurring transaction tied to its original occurrence', () => {
+    const projections = [
+      { recurring_id: 'rec-1', date: '2026-08-25' },
+      { recurring_id: 'rec-1', date: '2026-09-25' },
+    ]
+
+    const result = excludeMaterializedProjections(projections, [
+      {
+        recurring_transaction_id: 'rec-1',
+        recurring_occurrence_date: '2026-08-25',
+        date: '2026-08-12',
+      },
+    ])
+
+    expect(result).toEqual([projections[1]])
   })
 })

@@ -703,6 +703,7 @@ export default function AccountDetailPage() {
       bill_id: null,
       effective_bill_date: null,
       recurring_transaction_id: p.recurring_id,
+      recurring_occurrence_date: p.date,
       splits: [],
       is_ignored: false,
       virtual: true,
@@ -1589,6 +1590,11 @@ export default function AccountDetailPage() {
                       userCurrency={userCurrency}
                       onSelect={() => {}}
                       showPayee
+                      onConvertProjected={
+                        tx.virtual === true && tx.recurring_transaction_id != null && tx.date > localDateString()
+                          ? (projectedTx) => setProjectedToConvert(projectedTx as TxWithBalance)
+                          : undefined
+                      }
                       onClick={(clickedTx) => {
                         // The opening-balance row is synthetic; the desktop
                         // table makes it non-clickable and mobile must match.

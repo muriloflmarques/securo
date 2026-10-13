@@ -53,12 +53,13 @@ async def _materialized_recurring_occurrences(
     if not recurring_ids:
         return set()
 
+    occurrence_date = func.coalesce(Transaction.recurring_occurrence_date, Transaction.date)
     result = await session.execute(
-        select(Transaction.recurring_transaction_id, Transaction.date).where(
+        select(Transaction.recurring_transaction_id, occurrence_date).where(
             Transaction.workspace_id == workspace_id,
             Transaction.recurring_transaction_id.in_(recurring_ids),
-            Transaction.date >= range_start,
-            Transaction.date < range_end,
+            occurrence_date >= range_start,
+            occurrence_date < range_end,
         )
     )
     return {

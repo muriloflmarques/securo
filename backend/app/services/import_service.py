@@ -20,7 +20,7 @@ from app.models.category import Category
 from app.models.rule import Rule
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionImport, FailedRow
-from app.services import reconciliation_service, recurring_match_service
+from app.services import reconciliation_service, recurring_match_service, recurring_transaction_service
 from app.services.credit_card_service import apply_effective_date
 from app.services.category_service import get_assignable_category_ids
 from app.services.rule_engine import apply_rule_actions, evaluate_conditions, merge_notes
@@ -1029,6 +1029,13 @@ async def import_transactions(
         incoming.recurring_transaction_id = (
             recurring_link.id if recurring_link else None
         )
+        if recurring_link is not None:
+            incoming.recurring_occurrence_date = (
+                recurring_transaction_service.adjust_weekend_date(
+                    recurring_link.next_occurrence,
+                    recurring_link.weekend_adjustment,
+                )
+            )
         if txn_data.fx_rate:
             incoming.fx_rate_used = txn_data.fx_rate
             incoming.amount_primary = txn_data.amount * txn_data.fx_rate

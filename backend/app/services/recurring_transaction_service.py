@@ -3,7 +3,7 @@ import uuid
 from datetime import date, timedelta
 from typing import Optional
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.app_clock import app_today, get_workspace_timezone, today_in
@@ -160,14 +160,17 @@ async def _existing_materialized_occurrence(
     occurrence_date: date,
 ) -> Optional[Transaction]:
     window_days = 2 if recurring.frequency == "weekly" else 5
+    materialized_occurrence_date = func.coalesce(
+        Transaction.recurring_occurrence_date, Transaction.date
+    )
     result = await session.execute(
         select(Transaction)
         .where(
             Transaction.recurring_transaction_id == recurring.id,
-            Transaction.date >= occurrence_date - timedelta(days=window_days),
-            Transaction.date <= occurrence_date + timedelta(days=window_days),
+            materialized_occurrence_date >= occurrence_date - timedelta(days=window_days),
+            materialized_occurrence_date <= occurrence_date + timedelta(days=window_days),
         )
-        .order_by(Transaction.date != occurrence_date)
+        .order_by(materialized_occurrence_date != occurrence_date)
     )
     return result.scalars().first()
 
@@ -190,6 +193,7 @@ async def _materialize_occurrence(
     )
     if existing_real is not None:
         existing_real.recurring_transaction_id = recurring.id
+        existing_real.recurring_occurrence_date = occurrence_date
         await session.flush()
         return existing_real
 
@@ -207,6 +211,7 @@ async def _materialize_occurrence(
         source="recurring",
         status="pending" if is_synced_account else "posted",
         recurring_transaction_id=recurring.id,
+        recurring_occurrence_date=occurrence_date,
     )
     apply_effective_date(transaction, account)
     session.add(transaction)

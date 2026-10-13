@@ -1,8 +1,9 @@
 import { getAccountName } from '@/lib/account-utils'
 import { AccountIcon } from '@/components/account-icon'
 import { CategoryIcon } from '@/components/category-icon'
+import { Button } from '@/components/ui/button'
 import type { Transaction, Account } from '@/types'
-import { AlertTriangle, ArrowLeftRight, CalendarClock, ChartNoAxesColumn, Clock, EyeClosed, Paperclip } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, CalendarClock, ChartNoAxesColumn, CheckCircle2, Clock, EyeClosed, Paperclip } from 'lucide-react'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useTranslation } from 'react-i18next'
 import { formatCurrency } from '@/lib/format'
@@ -26,6 +27,7 @@ interface MobileTransactionRowProps {
   userCurrency: string
   onSelect: (id: string, shiftKey: boolean) => void
   onClick: (tx: Transaction) => void
+  onConvertProjected?: (tx: Transaction) => void
   /** Show the payee instead of the account name in an account-scoped view. */
   showPayee?: boolean
 }
@@ -43,6 +45,7 @@ export function MobileTransactionRow({
   userCurrency,
   onSelect,
   onClick,
+  onConvertProjected,
   showPayee = false,
 }: MobileTransactionRowProps) {
   const { mask } = usePrivacyMode()
@@ -59,6 +62,7 @@ export function MobileTransactionRow({
       : 'text-rose-500'
 
   const virtual = tx.virtual === true
+  const canConvertProjected = virtual && canWrite && tx.recurring_transaction_id != null && onConvertProjected != null
 
   return (
     <div
@@ -115,6 +119,22 @@ export function MobileTransactionRow({
           )}
           {virtual && (
             <CalendarClock className="h-3 w-3 text-primary shrink-0" />
+          )}
+          {canConvertProjected && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+              title={t('transactions.convertProjected', 'Convert projected transaction')}
+              aria-label={t('transactions.convertProjected', 'Convert projected transaction')}
+              onClick={(event) => {
+                event.stopPropagation()
+                onConvertProjected(tx)
+              }}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            </Button>
           )}
           {tx.is_ignored && (
             <EyeClosed className="h-3 w-3 text-gray-500 shrink-0" />

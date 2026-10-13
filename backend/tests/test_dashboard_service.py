@@ -1194,6 +1194,58 @@ async def test_projected_transactions_use_effective_month_without_duplicates(
     assert august_dates == []
 
 
+@pytest.mark.asyncio
+async def test_projected_transactions_use_recurring_occurrence_date_after_edit(
+    session, test_user, test_workspace
+):
+    account = Account(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        name="Checking",
+        type="checking",
+        balance=Decimal("0"),
+        currency="BRL",
+    )
+    rec = RecurringTransaction(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        account_id=account.id,
+        description="Fuel",
+        amount=Decimal("50"),
+        type="debit",
+        frequency="monthly",
+        currency="BRL",
+        start_date=date(2099, 3, 1),
+        next_occurrence=date(2099, 3, 1),
+    )
+    converted = Transaction(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        workspace_id=test_workspace.id,
+        account_id=account.id,
+        description="Fuel",
+        amount=Decimal("50"),
+        currency="BRL",
+        date=date(2099, 2, 20),
+        effective_date=date(2099, 2, 20),
+        type="debit",
+        source="recurring",
+        status="posted",
+        recurring_transaction_id=rec.id,
+        recurring_occurrence_date=date(2099, 3, 1),
+    )
+    session.add_all([account, rec, converted])
+    await session.commit()
+
+    result = await get_projected_transactions(
+        session, test_workspace.id, test_user.id, month=date(2099, 3, 1)
+    )
+
+    assert [item.date for item in result if item.recurring_id == str(rec.id)] == []
+
+
 # ---------------------------------------------------------------------------
 # get_summary with recurring projections
 # ---------------------------------------------------------------------------

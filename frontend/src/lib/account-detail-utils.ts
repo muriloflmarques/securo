@@ -5,7 +5,7 @@ type BalanceTransaction = Pick<
   'amount' | 'amount_primary' | 'currency' | 'is_ignored' | 'source' | 'type'
 >
 
-type MaterializedTransaction = Pick<Transaction, 'date' | 'recurring_transaction_id'>
+type MaterializedTransaction = Pick<Transaction, 'date' | 'recurring_transaction_id' | 'recurring_occurrence_date'>
 
 /** Return the usable amount in the selected currency, or null if FX is unknown. */
 export function transactionAmountForBalance(
@@ -54,7 +54,7 @@ export function excludeMaterializedProjections<
   const materialized = new Set(
     transactions
       .filter((transaction) => transaction.recurring_transaction_id != null)
-      .map((transaction) => `${transaction.recurring_transaction_id}:${transaction.date}`),
+      .map((transaction) => `${transaction.recurring_transaction_id}:${transaction.recurring_occurrence_date ?? transaction.date}`),
   )
 
   return projections.filter(

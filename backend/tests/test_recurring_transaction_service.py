@@ -857,6 +857,9 @@ async def test_materialize_projected_occurrence_and_generate_skips_duplicate(
     assert projected is not None
     assert projected.source == "recurring"
     assert projected.date == date(2099, 3, 1)
+    assert projected.recurring_occurrence_date == date(2099, 3, 1)
+    projected.date = date(2099, 2, 20)
+    await session.commit()
 
     await session.refresh(rec)
     assert rec.next_occurrence == date(2099, 1, 1)
@@ -870,6 +873,11 @@ async def test_materialize_projected_occurrence_and_generate_skips_duplicate(
     )
     transactions = result.scalars().all()
     assert [transaction.date for transaction in transactions] == [
+        date(2099, 1, 1),
+        date(2099, 2, 1),
+        date(2099, 2, 20),
+    ]
+    assert [transaction.recurring_occurrence_date for transaction in transactions] == [
         date(2099, 1, 1),
         date(2099, 2, 1),
         date(2099, 3, 1),

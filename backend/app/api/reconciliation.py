@@ -583,10 +583,16 @@ async def _settle(
         raise invoice_service.InvoiceError(
             "bill_missing", "The recurring bill is no longer there"
         )
-    from app.services import recurring_match_service
+    from app.services import recurring_match_service, recurring_transaction_service
 
     transaction = row.transaction
     transaction.recurring_transaction_id = bill.id
+    transaction.recurring_occurrence_date = (
+        recurring_transaction_service.adjust_weekend_date(
+            bill.next_occurrence,
+            bill.weekend_adjustment,
+        )
+    )
     recurring_match_service.advance_past(bill, transaction.date)
 
 

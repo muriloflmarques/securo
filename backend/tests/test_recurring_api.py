@@ -278,6 +278,7 @@ async def test_materialize_projected_occurrence(client, auth_headers, test_accou
     assert data["description"] == "Future fuel"
     assert data["source"] == "recurring"
     assert data["recurring_transaction_id"] == rec_resp.json()["id"]
+    assert data["recurring_occurrence_date"] == "2099-02-01"
     assert data["date"] == "2099-02-01"
 
 

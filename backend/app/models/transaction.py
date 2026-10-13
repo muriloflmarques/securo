@@ -115,6 +115,10 @@ class Transaction(Base):
         nullable=True,
         index=True,
     )
+    # Stable occurrence identity for linked recurring rows. The transaction's
+    # own date is editable ("I paid it early"), but this date records which
+    # scheduled occurrence the row fulfills so forecasts do not re-create it.
+    recurring_occurrence_date: Mapped[Optional[_date]] = mapped_column(Date, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     account: Mapped["Account"] = relationship(back_populates="transactions")

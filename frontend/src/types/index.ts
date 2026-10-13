@@ -280,6 +280,7 @@ export interface Transaction {
   effective_bill_date: string | null
   // The recurring bill this transaction fulfills, if any (issue #116).
   recurring_transaction_id?: string | null
+  recurring_occurrence_date?: string | null
   splits: TransactionSplit[]
   // Shared-transaction view fields. Set per-request when the viewer
   // is a linked split member but not the owner. Render `viewer_share`

@@ -37,7 +37,7 @@ from app.providers.base import (
 )
 from app.services import oauth_state
 from app.services import admin_service
-from app.services import reconciliation_service, recurring_match_service
+from app.services import reconciliation_service, recurring_match_service, recurring_transaction_service
 from app.services.text_similarity import token_overlap
 from app.services.account_service import (
     _simplefin_to_internal_balance,
@@ -2330,6 +2330,13 @@ async def sync_connection(
                 transaction.recurring_transaction_id = (
                     recurring_link.id if recurring_link else None
                 )
+                if recurring_link is not None:
+                    transaction.recurring_occurrence_date = (
+                        recurring_transaction_service.adjust_weekend_date(
+                            recurring_link.next_occurrence,
+                            recurring_link.weekend_adjustment,
+                        )
+                    )
                 session.add(transaction)
                 await session.flush()
                 if recurring_link is not None:

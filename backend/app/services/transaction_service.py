@@ -1866,6 +1866,7 @@ async def unlink_recurring_transaction(
     if not transaction or transaction.recurring_transaction_id is None:
         return None
     transaction.recurring_transaction_id = None
+    transaction.recurring_occurrence_date = None
     await session.commit()
     await session.refresh(transaction)
     return transaction

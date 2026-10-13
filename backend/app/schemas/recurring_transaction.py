@@ -42,6 +42,10 @@ class RecurringTransactionUpdate(BaseModel):
     auto_generate: Optional[bool] = None
 
 
+class RecurringOccurrenceMaterialize(BaseModel):
+    date: _Date
+
+
 class RecurringTransactionRead(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID

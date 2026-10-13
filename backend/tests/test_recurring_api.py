@@ -252,6 +252,36 @@ async def test_generate_no_duplicate_with_skip_first(client, auth_headers, test_
 
 
 @pytest.mark.asyncio
+async def test_materialize_projected_occurrence(client, auth_headers, test_account):
+    rec_resp = await client.post(
+        "/api/recurring-transactions",
+        json={
+            "description": "Future fuel",
+            "amount": 45.00,
+            "currency": "BRL",
+            "type": "debit",
+            "frequency": "monthly",
+            "start_date": "2099-01-01",
+            "account_id": str(test_account.id),
+        },
+        headers=auth_headers,
+    )
+    assert rec_resp.status_code == 201
+
+    materialize_resp = await client.post(
+        f"/api/recurring-transactions/{rec_resp.json()['id']}/materialize",
+        json={"date": "2099-02-01"},
+        headers=auth_headers,
+    )
+    assert materialize_resp.status_code == 201
+    data = materialize_resp.json()
+    assert data["description"] == "Future fuel"
+    assert data["source"] == "recurring"
+    assert data["recurring_transaction_id"] == rec_resp.json()["id"]
+    assert data["date"] == "2099-02-01"
+
+
+@pytest.mark.asyncio
 async def test_list_recurring_transactions(client, auth_headers, test_account):
     """List returns all recurring transactions for the user."""
     # Create two

@@ -1219,6 +1219,10 @@ export const recurring = {
     const { data } = await api.post('/recurring-transactions/generate')
     return data
   },
+  materializeOccurrence: async (id: string, date: string): Promise<Transaction> => {
+    const { data } = await api.post(`/recurring-transactions/${id}/materialize`, { date })
+    return data
+  },
 }
 
 // Budgets

@@ -168,7 +168,7 @@ def _advance_date(
 ) -> date:
     """Advance a date by the given frequency.
 
-    For monthly, quarterly, semiannual, and yearly recurrences, ``intended_day`` is the day
+    For monthly, bimonthly, quarterly, semiannual, and yearly recurrences, ``intended_day`` is the day
     the user actually wants (e.g. 31). We cap it to the target month's length
     so short months clamp, but subsequent occurrences recover to the intended
     day when it exists again. Falls back to ``current.day`` when not provided.

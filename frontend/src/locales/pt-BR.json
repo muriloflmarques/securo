@@ -491,6 +491,7 @@
         "weekly": "Semanal",
         "biweekly": "A cada 2 semanas",
         "monthly": "Mensal",
+        "bimonthly": "A cada 2 meses",
         "quarterly": "Trimestral",
         "semiannual": "Semestral",
         "yearly": "Anual"

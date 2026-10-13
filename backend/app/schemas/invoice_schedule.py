@@ -10,7 +10,7 @@ from app.schemas.invoice import InvoiceLineInput, InvoicePayee
 #: Decisions a human took about an agreement. Never PATCHed as a string:
 #: each changes through the action that causes it (`/pause`, `/end`).
 ScheduleStatus = Literal["active", "paused", "ended"]
-ScheduleFrequency = Literal["weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly"]
+ScheduleFrequency = Literal["weekly", "biweekly", "monthly", "bimonthly", "quarterly", "semiannual", "yearly"]
 ScheduleEndType = Literal["never", "on_date", "after_count"]
 ScheduleEndReason = Literal["canceled_by_client", "canceled_by_us", "completed", "unpaid", "other"]
 SchedulePauseReason = Literal["manual", "failures"]

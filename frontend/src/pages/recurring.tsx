@@ -149,6 +149,7 @@ function RecurringTab() {
   const frequencyLabel = (f: string) => {
     const map: Record<string, string> = {
       monthly: t('recurring.monthly'),
+      bimonthly: t('recurring.bimonthly'),
       quarterly: t('recurring.quarterly'),
       semiannual: t('recurring.semiannual'),
       weekly: t('recurring.weekly'),

@@ -83,7 +83,7 @@ SCHEDULE_PAUSE_REASONS = ("manual", "failures")
 
 #: Same vocabulary as recurring transactions, so the two pickers in the
 #: product agree on what a word means.
-SCHEDULE_FREQUENCIES = ("weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly")
+SCHEDULE_FREQUENCIES = ("weekly", "biweekly", "monthly", "bimonthly", "quarterly", "semiannual", "yearly")
 
 #: How an agreement knows it is over. `never` runs until ended by hand.
 SCHEDULE_END_TYPES = ("never", "on_date", "after_count")
@@ -102,6 +102,7 @@ PERIODS_PER_YEAR: dict[str, Decimal] = {
     "weekly": Decimal("52"),
     "biweekly": Decimal("26"),
     "monthly": Decimal("12"),
+    "bimonthly": Decimal("6"),
     "quarterly": Decimal("4"),
     "semiannual": Decimal("2"),
     "yearly": Decimal("1"),
@@ -135,7 +136,7 @@ class InvoiceSchedule(Base):
             "origin IN ('local', 'imported')", name="ck_invoice_schedules_origin"
         ),
         CheckConstraint(
-            "frequency IN ('weekly', 'biweekly', 'monthly', 'quarterly', 'semiannual', 'yearly')",
+            "frequency IN ('weekly', 'biweekly', 'monthly', 'bimonthly', 'quarterly', 'semiannual', 'yearly')",
             name="ck_invoice_schedules_frequency",
         ),
         CheckConstraint(

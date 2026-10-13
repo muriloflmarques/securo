@@ -778,7 +778,7 @@ async def create_installment_series(
     """Create a manual installment series.
 
     Repeats ``data.base`` ``data.installments`` times: every parcel stores
-    the base amount, date advanced by the given frequency (monthly/quarterly/
+    the base amount, date advanced by the given frequency (monthly/bimonthly/quarterly/
     semiannual/weekly/biweekly/yearly, matching recurring transactions), and the shared
     installment fingerprint (account, installment_purchase_date,
     total_installments, installment_total_amount = amount * installments)

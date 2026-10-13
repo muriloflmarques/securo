@@ -55,7 +55,7 @@ PRICE_BILLINGS = ("one_time", "recurring")
 
 #: Same vocabulary as recurring invoices, so a recurring price can seed
 #: an agreement without translation.
-PRICE_INTERVALS = ("weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly")
+PRICE_INTERVALS = ("weekly", "biweekly", "monthly", "bimonthly", "quarterly", "semiannual", "yearly")
 
 #: Who authored the row. `imported` mirrors a payment gateway's catalog:
 #: that system owns it, and a re-sync converges on the same row through
@@ -156,7 +156,7 @@ class ProductPrice(Base):
         CheckConstraint(
             "(billing = 'one_time' AND interval IS NULL)"
             " OR (billing = 'recurring' AND interval IN"
-            " ('weekly', 'biweekly', 'monthly', 'quarterly', 'semiannual', 'yearly'))",
+            " ('weekly', 'biweekly', 'monthly', 'bimonthly', 'quarterly', 'semiannual', 'yearly'))",
             name="ck_product_prices_interval",
         ),
     )

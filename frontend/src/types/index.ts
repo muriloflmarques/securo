@@ -1309,6 +1309,7 @@ export type InvoiceScheduleFrequency =
   | 'weekly'
   | 'biweekly'
   | 'monthly'
+  | 'bimonthly'
   | 'quarterly'
   | 'semiannual'
   | 'yearly'

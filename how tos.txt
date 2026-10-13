@@ -14,22 +14,22 @@ docker cp securo-db-1:/tmp/securo_backup.dump .\2026-10-05_securo_backup_02.dump
 -----------------------------------------------------------------------
 Once on Linux, navigate to "repo/securo" and then run
 	git pull
-	
+
 Now it's necessary to build the image again without cache
 	docker compose build --no-cache frontend
 ou
 	docker compose build --no-cache
-	
+
+Apply migrations using the updated backend image	
+	docker compose run --rm backend alembic upgrade head
+
 Then, recreate the running container
 	docker compose up --detach --no-deps frontend
 ou
 	docker compose up --detach --no-deps
 
-Apply migrations using the updated backend image	
-	docker compose run --rm backend alembic upgrade head
-
 Verify the database revision
-	docker compose exec backend alembic current	
+	docker compose exec backend alembic current
 
 Refresh the browser
 -----------------------------------------------------------------------

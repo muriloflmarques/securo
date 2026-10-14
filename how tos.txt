@@ -11,6 +11,8 @@ docker exec securo-db-1 pg_restore -l /tmp/securo_backup.dump
 --Copy the valid dump out of Docker
 docker cp securo-db-1:/tmp/securo_backup.dump .\2026-10-05_securo_backup_02.dump
 
+Don't forget to merge from upstream on main branc
+
 -----------------------------------------------------------------------
 Once on Linux, navigate to "repo/securo" and then run
 	git pull

@@ -514,16 +514,18 @@ export default function ReportsPage() {
   // Composition toggle options per report type
   const compositionOptions = activeTab === 'net_worth'
     ? ['netWorth', 'assetsAndAccounts', 'liabilities'] as const
-    : activeTab === 'income_expenses' || activeTab === 'cash_flow'
-      ? ['net', 'byIncome', 'byExpenses'] as const
-      : ['summary', 'detailed'] as const
+    : activeTab === 'income_expenses'
+      ? ['net', 'byIncome', 'byExpenses', 'byCategory'] as const
+      : activeTab === 'cash_flow'
+        ? ['net', 'byIncome', 'byExpenses'] as const
+        : ['summary', 'detailed'] as const
 
   // Which breakdown groups are visible in each toggle state. null = show all.
   const activeCompositionGroups: Set<string> | null = (() => {
     if (compositionView === 'assetsAndAccounts') return new Set(['accounts', 'assets'])
     if (compositionView === 'liabilities') return new Set(['liabilities'])
     if (compositionView === 'byIncome') return new Set(['income'])
-    if (compositionView === 'byExpenses') return new Set(['expenses'])
+    if (compositionView === 'byExpenses' || compositionView === 'byCategory') return new Set(['expenses'])
     return null
   })()
 
@@ -535,18 +537,6 @@ export default function ReportsPage() {
     key === 'projectedIncome' ? 'income'
       : key === 'projectedExpenses' ? 'expenses'
         : key
-
-  // Inner ring — summary view (high-level breakdown), filtered by toggle state for net_worth
-  const innerDonutData = (() => {
-    const excludedKeys = new Set(['netIncome', 'startingBalance', 'endingBalance'])
-    return compositionBreakdownData
-      .filter((b) => !excludedKeys.has(b.key) && (!activeCompositionGroups || activeCompositionGroups.has(groupOf(b.key))))
-      .map((b) => ({
-        name: t(`reports.${b.key}`, { defaultValue: b.label }),
-        value: b.value,
-        color: b.color,
-      }))
-  })()
 
   const activeComposition = snapshotTrendPoint?.composition ?? composition
 
@@ -619,10 +609,44 @@ export default function ReportsPage() {
       }))
   })()
 
+  // In the category view, each slice is a parent category group (for example
+  // Casa), combining its expense categories (such as Aluguel and Água).
+  const innerDonutData = (() => {
+    if (activeTab === 'income_expenses' && compositionView === 'byCategory') {
+      const byCategoryGroup = new Map<string, { name: string; value: number; color: string }>()
+      for (const item of activeComposition) {
+        if (item.group !== 'expenses' || item.value <= 0) continue
+        const key = item.category_group_key ?? 'ungrouped'
+        const existing = byCategoryGroup.get(key)
+        if (existing) {
+          existing.value += item.value
+        } else {
+          byCategoryGroup.set(key, {
+            name: item.category_group_key
+              ? (item.category_group_label ?? t('categories.noGroup'))
+              : t('categories.noGroup'),
+            value: item.value,
+            color: item.category_group_color ?? OTHER_SLICE_COLOR,
+          })
+        }
+      }
+      return [...byCategoryGroup.values()].sort((a, b) => b.value - a.value)
+    }
+    const excludedKeys = new Set(['netIncome', 'startingBalance', 'endingBalance'])
+    return compositionBreakdownData
+      .filter((b) => !excludedKeys.has(b.key) && (!activeCompositionGroups || activeCompositionGroups.has(groupOf(b.key))))
+      .map((b) => ({
+        name: t(`reports.${b.key}`, { defaultValue: b.label }),
+        value: b.value,
+        color: b.color,
+      }))
+  })()
+
   // Outer ring — items above 3 % of total get their own slice; everything else
   // per group folds into one "Other <Group>" slice. Outer arcs are anchored to
   // inner ring values so per-item rounding never misaligns the two rings.
   const outerDonutData = (() => {
+    if (activeTab === 'income_expenses' && compositionView === 'byCategory') return []
     if (compositionDetail.length === 0) return []
 
     const excludedKeys = new Set(['netIncome', 'startingBalance', 'endingBalance'])
@@ -1315,21 +1339,21 @@ export default function ReportsPage() {
       {/* Breakdown: Donut + Grouped Bar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         {/* Composition widget — summary ring + ranked, labelled detail bars */}
-        <div className={`rounded-xl border shadow-sm transition-colors ${selectedDate ? 'bg-primary/5 border-primary/50' : 'bg-card border-border'}`}>
-          <div className="px-5 pt-4 pb-2 flex flex-col gap-2 min-[635px]:flex-row min-[635px]:items-start min-[635px]:justify-between lg:flex-col lg:items-start xl:flex-row xl:items-start xl:justify-between">
+        <div data-testid="report-composition" className={`rounded-xl border shadow-sm transition-colors ${selectedDate ? 'bg-primary/5 border-primary/50' : 'bg-card border-border'}`}>
+          <div className="px-5 pt-4 pb-2 flex flex-wrap items-start justify-between gap-2">
             <div className="flex flex-col">
               <p className="text-sm font-semibold text-foreground">{t('reports.composition')}</p>
               {selectedDate && (
                 <span className="text-xs text-primary font-medium">{t('reports.asOf', { date: selectedDate })}</span>
               )}
             </div>
-            <div className="flex items-stretch rounded-lg border border-border bg-muted/30 overflow-hidden w-fit">
+            <div className="flex flex-nowrap items-stretch rounded-lg border border-border bg-muted/30 overflow-x-auto w-fit max-w-full">
               {compositionOptions.map((opt) => (
                 <button
                   key={opt}
                   type="button"
                   onClick={() => setCompositionView(opt)}
-                  className={`px-2 py-1 text-[11px] font-semibold text-center transition-colors ${
+                  className={`shrink-0 whitespace-nowrap px-1.5 py-1 text-[11px] font-semibold text-center transition-colors ${
                     compositionView === opt
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -1451,7 +1475,7 @@ export default function ReportsPage() {
                               : compositionView === 'liabilities'
                                 ? t(isHistoricalSnapshot ? 'reports.youOwed' : 'reports.youOwe', { defaultValue: isHistoricalSnapshot ? 'You Owed' : 'You Owe' })
                                 : compositionView === 'byIncome' ? t('reports.income')
-                                : compositionView === 'byExpenses' ? t('reports.expenses')
+                                : compositionView === 'byExpenses' || compositionView === 'byCategory' ? t('reports.expenses')
                                 : meta?.type === 'income_expenses' ? t('reports.netIncome')
                                 : t(currentTab.labelKey)}
                           </span>
@@ -1472,7 +1496,7 @@ export default function ReportsPage() {
                         </div>
                       </div>
                       <div key={compositionView} className="flex flex-col items-center gap-1 px-3 mt-1 w-full">
-                        <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+                        <div data-testid="composition-summary-legend" className="flex flex-wrap justify-center gap-x-3 gap-y-1">
                           {innerDonutData.map((d, i) => (
                             <div key={`${i}-${d.name}`} className="flex items-center gap-1.5">
                               <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />

@@ -72,6 +72,16 @@ function formatCompact(value: number, currency = 'USD', locale = 'en-US') {
   }).format(value)
 }
 
+function formatCompositionAmount(value: number, currency: string, locale: string) {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    useGrouping: true,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.round(value * 100) === 0 ? 0 : value)
+}
+
 /** "Apr 2026" from a YYYY-MM-DD date, in the display locale. */
 function formatShortMonth(isoDate: string, locale: string) {
   const [y, m] = isoDate.split('-').map(Number)
@@ -641,6 +651,15 @@ export default function ReportsPage() {
         color: b.color,
       }))
   })()
+
+  const showNetCompositionValue = compositionView === 'netWorth' || compositionView === 'net' || !compositionView
+  const compositionCenterValue = snapshotTrendPoint
+    ? showNetCompositionValue
+      ? snapshotTrendPoint.value
+      : innerDonutData.reduce((sum, item) => sum + item.value, 0)
+    : showNetCompositionValue
+      ? meta?.type === 'cash_flow' ? (summary?.change_amount ?? 0) : (summary?.primary_value ?? 0)
+      : innerDonutData.reduce((sum, item) => sum + item.value, 0)
 
   // Outer ring — items above 3 % of total get their own slice; everything else
   // per group folds into one "Other <Group>" slice. Outer arcs are anchored to
@@ -1340,26 +1359,33 @@ export default function ReportsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         {/* Composition widget — summary ring + ranked, labelled detail bars */}
         <div data-testid="report-composition" className={`rounded-xl border shadow-sm transition-colors ${selectedDate ? 'bg-primary/5 border-primary/50' : 'bg-card border-border'}`}>
-          <div className="px-5 pt-4 pb-2 flex flex-wrap items-start justify-between gap-2">
-            <div className="flex flex-col">
-              <p className="text-sm font-semibold text-foreground">{t('reports.composition')}</p>
+          <div className="px-5 pt-4 pb-2 flex flex-col items-center gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-1 sm:px-4">
+            <div className={selectedDate ? 'flex flex-col items-center sm:items-start' : 'hidden sm:flex sm:flex-col sm:items-start'}>
+              <p className="hidden sm:block text-sm font-semibold text-foreground">{t('reports.composition')}</p>
               {selectedDate && (
                 <span className="text-xs text-primary font-medium">{t('reports.asOf', { date: selectedDate })}</span>
               )}
             </div>
-            <div className="flex flex-nowrap items-stretch rounded-lg border border-border bg-muted/30 overflow-x-auto w-fit max-w-full">
+            <div className="flex min-w-0 max-w-full flex-nowrap items-stretch overflow-x-auto rounded-lg border border-border bg-muted/30">
               {compositionOptions.map((opt) => (
                 <button
                   key={opt}
                   type="button"
                   onClick={() => setCompositionView(opt)}
+                  aria-label={t(`reports.${opt}`)}
                   className={`shrink-0 whitespace-nowrap px-1.5 py-1 text-[11px] font-semibold text-center transition-colors ${
                     compositionView === opt
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  {t(`reports.${opt}`)}
+                  <span aria-hidden="true" className="sm:hidden">
+                    {opt === 'byIncome' ? t('reports.income')
+                      : opt === 'byExpenses' ? t('reports.expenses')
+                        : opt === 'byCategory' ? t('categories.title')
+                          : t(`reports.${opt}`)}
+                  </span>
+                  <span aria-hidden="true" className="hidden sm:inline">{t(`reports.${opt}`)}</span>
                 </button>
               ))}
             </div>
@@ -1479,19 +1505,8 @@ export default function ReportsPage() {
                                 : meta?.type === 'income_expenses' ? t('reports.netIncome')
                                 : t(currentTab.labelKey)}
                           </span>
-                          <span className="text-base font-bold text-foreground tabular-nums">
-                            {mask(formatCompact(
-                              snapshotTrendPoint
-                                ? compositionView === 'netWorth' || compositionView === 'net' || !compositionView
-                                  ? snapshotTrendPoint.value
-                                  : innerDonutData.reduce((s, d) => s + d.value, 0)
-                                : compositionView === 'netWorth' || compositionView === 'net' || !compositionView
-                                  ? meta?.type === 'cash_flow'
-                                    ? (summary?.change_amount ?? 0)
-                                    : (summary?.primary_value ?? 0)
-                                  : innerDonutData.reduce((s, d) => s + d.value, 0),
-                              userCurrency, locale
-                            ))}
+                          <span className="text-sm font-bold text-foreground tabular-nums whitespace-nowrap">
+                            {mask(formatCompositionAmount(compositionCenterValue, userCurrency, locale))}
                           </span>
                         </div>
                       </div>
@@ -1620,13 +1635,17 @@ export default function ReportsPage() {
                       <button
                         key={opt}
                         onClick={() => { setSparklineView(opt); setSparklinePage(0) }}
-                        className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                        aria-label={t(`reports.${opt}`)}
+                        className={`whitespace-nowrap px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                           sparklineView === opt
                             ? 'bg-primary text-primary-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                         }`}
                       >
-                        {t(`reports.${opt}`)}
+                        <span aria-hidden="true" className="sm:hidden">
+                          {t(`reports.${opt === 'byIncome' ? 'income' : 'expenses'}`)}
+                        </span>
+                        <span aria-hidden="true" className="hidden sm:inline">{t(`reports.${opt}`)}</span>
                       </button>
                     ))}
                   </div>

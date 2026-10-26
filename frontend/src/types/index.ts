@@ -1075,6 +1075,9 @@ export interface ReportCompositionItem {
   value: number
   color: string
   group: string
+  category_group_key?: string | null
+  category_group_label?: string | null
+  category_group_color?: string | null
 }
 
 export interface CategoryTrendItem {

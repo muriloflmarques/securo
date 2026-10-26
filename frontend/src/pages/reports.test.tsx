@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 
 import ReportsPage from '@/pages/reports'
 import { renderWithProviders, t } from '@/test/utils'
@@ -59,6 +59,49 @@ beforeEach(() => {
 })
 
 afterEach(() => vi.useRealTimers())
+
+it('groups expense categories in the composition legend only on Income vs Expenses', async () => {
+  api.reports.incomeExpenses.mockResolvedValue({
+    ...emptyReport('income_expenses'),
+    summary: {
+      primary_value: -30,
+      change_amount: 0,
+      change_percent: null,
+      breakdowns: [
+        { key: 'income', label: 'Income', value: 70, color: '#10B981' },
+        { key: 'expenses', label: 'Expenses', value: 100, color: '#F43F5E' },
+      ],
+    },
+    composition: [
+      { key: 'water', label: 'Water', value: 60, color: '#123456', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+      { key: 'rent', label: 'Rent', value: 40, color: '#654321', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+      { key: 'salary', label: 'Salary', value: 70, color: '#10B981', group: 'income' },
+    ],
+    trend: [{
+      date: '2026-01-01', value: -30, breakdowns: { income: 70, expenses: 100 }, change: null,
+      composition: [
+        { key: 'water', label: 'Water', value: 15, color: '#123456', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+        { key: 'rent', label: 'Rent', value: 25, color: '#654321', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+      ],
+    }],
+  })
+
+  const { user } = renderWithProviders(<ReportsPage />)
+  await user.click(screen.getByRole('button', { name: t('reports.incomeExpenses') }))
+  await waitFor(() => expect(api.reports.incomeExpenses).toHaveBeenCalled())
+  await user.click(screen.getByRole('button', { name: t('reports.byCategory') }))
+
+  const composition = within(screen.getByTestId('report-composition'))
+  const legend = within(composition.getByTestId('composition-summary-legend'))
+  expect(legend.getAllByText('Casa')).toHaveLength(1)
+  expect(legend.queryByText('Water')).not.toBeInTheDocument()
+  expect(legend.queryByText('Rent')).not.toBeInTheDocument()
+  expect(legend.queryByText('Salary')).not.toBeInTheDocument()
+  expect(legend.queryByText('Expenses')).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: t('reports.cashFlow') }))
+  expect(screen.queryByRole('button', { name: t('reports.byCategory') })).not.toBeInTheDocument()
+})
 
 describe('Reports page — Custom range segment', () => {
   it('loads the Net Worth tab with the 1Y preset by default', async () => {

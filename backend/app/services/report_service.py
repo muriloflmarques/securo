@@ -14,6 +14,7 @@ from app.models.asset import ASSET_PRICE_DECIMALS, Asset
 from app.models.asset_value import AssetValue
 from app.models.transaction import Transaction
 from app.models.category import Category
+from app.models.category_group import CategoryGroup
 from app.models.user import User
 from app.services._query_filters import (
     counts_as_pnl,
@@ -1150,6 +1151,39 @@ async def get_income_expenses_report(
         else:
             cursor2 = date(cursor2.year, cursor2.month + 1, 1)
 
+    # Attach each expense category's parent group so clients can roll up the
+    # existing category composition without requerying transactions. This also
+    # covers categories that appear only in a selected trend period.
+    expense_category_ids = {
+        uuid.UUID(cat_key)
+        for category_map in (comp_map, cat_trend_map)
+        for cat_key, group in category_map
+        if group == "expenses" and cat_key != "uncategorized"
+    }
+    category_group_info: dict[str, tuple[str, str, str]] = {}
+    if expense_category_ids:
+        group_result = await session.execute(
+            select(Category.id, CategoryGroup.id, CategoryGroup.name, CategoryGroup.color)
+            .select_from(Category)
+            .outerjoin(CategoryGroup, Category.group_id == CategoryGroup.id)
+            .where(Category.id.in_(expense_category_ids))
+        )
+        for cat_id, group_id, group_name, group_color in group_result.all():
+            if group_id is not None:
+                category_group_info[str(cat_id)] = (
+                    str(group_id), group_name, group_color or "#6B7280"
+                )
+
+    def category_group_fields(cat_key: str, group: str) -> dict[str, str]:
+        info = category_group_info.get(cat_key) if group == "expenses" else None
+        if info is None:
+            return {}
+        return {
+            "category_group_key": info[0],
+            "category_group_label": info[1],
+            "category_group_color": info[2],
+        }
+
     # Build final composition list from map
     composition: list[ReportCompositionItem] = []
     for (cat_key, group), info in comp_map.items():
@@ -1161,6 +1195,7 @@ async def get_income_expenses_report(
             value=round(info["value"], 2),
             color=info["color"],
             group=group,
+            **category_group_fields(cat_key, group),
         ))
 
     # Build period labels from the same points used by the trend
@@ -1229,6 +1264,7 @@ async def get_income_expenses_report(
                     value=round(v, 2),
                     color=info["color"],
                     group=group,
+                    **category_group_fields(cat_key, group),
                 ))
 
     return ReportResponse(

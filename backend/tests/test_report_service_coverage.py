@@ -24,6 +24,7 @@ from app.models.asset import Asset
 from app.models.asset_value import AssetValue
 from app.models.bank_connection import BankConnection
 from app.models.category import Category
+from app.models.category_group import CategoryGroup
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
 from app.services.report_service import (
@@ -227,6 +228,38 @@ async def test_income_expenses_basic_structure(session, test_user, test_workspac
     assert "income" in groups
     for ct in report.category_trend:
         assert len(ct.series) == len(report.trend)
+
+
+async def test_income_expenses_composition_includes_parent_category_groups(
+    session, test_user, test_workspace,
+):
+    home = CategoryGroup(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=test_workspace.id,
+        name="Casa", icon="house", color="#3b82f6", position=0,
+    )
+    session.add(home)
+    await session.commit()
+    rent = await _make_category(session, test_user.id, "Aluguel")
+    water = await _make_category(session, test_user.id, "Água")
+    rent.group_id = home.id
+    water.group_id = home.id
+    await session.commit()
+    account = await _make_account(session, test_user.id, "Home expenses")
+    today = date.today()
+    await _add_txn(session, test_user.id, account.id, 80, "debit", today, category_id=rent.id)
+    await _add_txn(session, test_user.id, account.id, 20, "debit", today, category_id=water.id)
+
+    report = await get_income_expenses_report(
+        session, test_workspace.id, test_user.id, interval="daily",
+        start_date=today, end_date=today,
+    )
+    for items in (report.composition, report.trend[0].composition):
+        expenses = {item.key: item for item in items if item.group == "expenses"}
+        assert set(expenses) == {str(rent.id), str(water.id)}
+        for item in expenses.values():
+            assert item.category_group_key == str(home.id)
+            assert item.category_group_label == "Casa"
+            assert item.category_group_color == "#3b82f6"
 
 
 async def test_income_expenses_empty_data(session, test_user, test_workspace):

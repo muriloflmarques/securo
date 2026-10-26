@@ -60,6 +60,32 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers())
 
+it('shows grouped currency with two decimals in the composition center', async () => {
+  api.reports.incomeExpenses.mockResolvedValue({
+    ...emptyReport('income_expenses'),
+    summary: {
+      primary_value: -22241.3,
+      change_amount: 0,
+      change_percent: null,
+      breakdowns: [
+        { key: 'income', label: 'Income', value: 1, color: '#10B981' },
+        { key: 'expenses', label: 'Expenses', value: 3243.5, color: '#F43F5E' },
+      ],
+    },
+    composition: [
+      { key: 'rent', label: 'Rent', value: 3243.5, color: '#654321', group: 'expenses' },
+    ],
+  })
+
+  const { user } = renderWithProviders(<ReportsPage />)
+  await user.click(screen.getByRole('button', { name: t('reports.incomeExpenses') }))
+  const composition = within(screen.getByTestId('report-composition'))
+  expect(await composition.findByText('-$22,241.30')).toBeInTheDocument()
+
+  await user.click(composition.getByRole('button', { name: t('reports.byExpenses') }))
+  expect(composition.getByText('$3,243.50')).toBeInTheDocument()
+})
+
 it('groups expense categories in the composition legend only on Income vs Expenses', async () => {
   api.reports.incomeExpenses.mockResolvedValue({
     ...emptyReport('income_expenses'),

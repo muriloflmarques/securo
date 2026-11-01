@@ -75,7 +75,7 @@ def upgrade() -> None:
             "origin IN ('local', 'imported')", name="ck_invoice_schedules_origin"
         ),
         sa.CheckConstraint(
-            "frequency IN ('weekly', 'biweekly', 'monthly', 'quarterly', 'semiannual', 'yearly')",
+            "frequency IN ('weekly', 'biweekly', 'monthly', 'bimonthly', 'quarterly', 'semiannual', 'yearly')",
             name="ck_invoice_schedules_frequency",
         ),
         sa.CheckConstraint(

@@ -23,8 +23,8 @@ function compactCurrency(value: number, currency = 'USD', locale = 'en-US') {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
-    notation: 'compact',
-    maximumFractionDigits: 1,
+    notation: 'standard',
+    maximumFractionDigits: 2,
   }).format(value)
 }
 

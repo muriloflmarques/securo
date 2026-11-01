@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ProductKind = Literal["service", "product"]
 PriceBilling = Literal["one_time", "recurring"]
-PriceInterval = Literal["weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly"]
+PriceInterval = Literal["weekly", "biweekly", "monthly", "bimonthly", "quarterly", "semiannual", "yearly"]
 ProductOrigin = Literal["local", "imported"]
 
 

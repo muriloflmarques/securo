@@ -20,6 +20,7 @@ from app.services.recurring_transaction_service import (
     get_occurrences_in_range,
     get_recurring_transaction,
     get_recurring_transactions,
+    materialize_projected_occurrence,
     update_recurring_transaction,
 )
 
@@ -826,6 +827,55 @@ async def test_generate_pending_holds_synced_account_rows_pending(
     )
     [txn] = result.scalars().all()
     assert txn.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_materialize_projected_occurrence_and_generate_skips_duplicate(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    rec = await create_recurring_transaction(
+        session,
+        test_workspace.id,
+        test_user.id,
+        RecurringTransactionCreate(
+            description="Future bill",
+            amount=Decimal("12"),
+            type="debit",
+            frequency="monthly",
+            start_date=date(2099, 1, 1),
+            account_id=test_account_for_recurring.id,
+        ),
+    )
+
+    projected = await materialize_projected_occurrence(
+        session,
+        rec.id,
+        test_workspace.id,
+        test_user.id,
+        date(2099, 3, 1),
+    )
+    assert projected is not None
+    assert projected.source == "recurring"
+    assert projected.date == date(2099, 3, 1)
+
+    await session.refresh(rec)
+    assert rec.next_occurrence == date(2099, 1, 1)
+
+    assert await generate_pending(session, test_user.id, up_to=date(2099, 3, 1)) == 2
+
+    result = await session.execute(
+        select(Transaction)
+        .where(Transaction.recurring_transaction_id == rec.id)
+        .order_by(Transaction.date)
+    )
+    transactions = result.scalars().all()
+    assert [transaction.date for transaction in transactions] == [
+        date(2099, 1, 1),
+        date(2099, 2, 1),
+        date(2099, 3, 1),
+    ]
+    await session.refresh(rec)
+    assert rec.next_occurrence == date(2099, 4, 1)
 
 
 @pytest.mark.asyncio

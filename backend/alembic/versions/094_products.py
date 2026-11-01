@@ -87,7 +87,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "(billing = 'one_time' AND interval IS NULL)"
             " OR (billing = 'recurring' AND interval IN"
-            " ('weekly', 'biweekly', 'monthly', 'quarterly', 'semiannual', 'yearly'))",
+            " ('weekly', 'biweekly', 'monthly', 'bimonthly', 'quarterly', 'semiannual', 'yearly'))",
             name="ck_product_prices_interval",
         ),
     )

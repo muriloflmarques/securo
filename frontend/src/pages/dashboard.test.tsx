@@ -51,6 +51,22 @@ vi.mock('@/contexts/collection-filter-context', () => ({
   useCollectionFilter: () => ({ activeAccountIds: null, activeWalletIds: null }),
 }))
 
+const workspace = vi.hoisted(() => ({ canWrite: true, transactionsEnabled: true }))
+vi.mock('@/contexts/workspace-context', () => ({
+  useWorkspace: () => ({
+    canWrite: workspace.canWrite,
+    hasModule: (module: string) => module === 'transactions' && workspace.transactionsEnabled,
+  }),
+}))
+
+vi.mock('@/components/quick-add-transaction', () => ({
+  default: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Quick add transaction">
+      <button onClick={onClose}>Close quick add</button>
+    </div>
+  ),
+}))
+
 function account(overrides: Partial<Account>): Account {
   return {
     id: 'acc',
@@ -129,6 +145,8 @@ const summary: DashboardSummary = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  workspace.canWrite = true
+  workspace.transactionsEnabled = true
   api.dashboard.summary.mockResolvedValue(summary)
   api.dashboard.spendingByCategory.mockResolvedValue([])
   api.dashboard.balanceHistory.mockResolvedValue({
@@ -579,5 +597,35 @@ describe('Dashboard refresh button', () => {
       '2026-04-01', undefined, ['2026-02-01'],
     )
     expect(screen.getByTestId('location-search')).toHaveTextContent('comparison_month=2026-02')
+  })
+})
+
+describe('Dashboard mobile transaction action', () => {
+  const renderDashboard = () => renderWithProviders(
+    <TooltipProvider delayDuration={0}>
+      <DashboardPage />
+    </TooltipProvider>,
+  )
+
+  it('opens the shared quick-add dialog from the header', async () => {
+    const { user } = renderDashboard()
+
+    await user.click(screen.getByRole('button', { name: t('transactions.addManual') }))
+    expect(await screen.findByRole('dialog', { name: 'Quick add transaction' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close quick add' }))
+    expect(screen.queryByRole('dialog', { name: 'Quick add transaction' })).not.toBeInTheDocument()
+  })
+
+  it('hides the action without write access or the Transactions module', () => {
+    workspace.canWrite = false
+    const { unmount } = renderDashboard()
+    expect(screen.queryByRole('button', { name: t('transactions.addManual') })).not.toBeInTheDocument()
+    unmount()
+
+    workspace.canWrite = true
+    workspace.transactionsEnabled = false
+    renderDashboard()
+    expect(screen.queryByRole('button', { name: t('transactions.addManual') })).not.toBeInTheDocument()
   })
 })

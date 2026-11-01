@@ -6,7 +6,7 @@ from typing import Annotated, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 WeekendAdjustment = Literal["none", "previous_friday", "next_monday"]
-RecurringFrequency = Literal["weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly"]
+RecurringFrequency = Literal["weekly", "biweekly", "monthly", "bimonthly", "quarterly", "semiannual", "yearly"]
 DayOfMonth = Annotated[int, Field(ge=1, le=31)]
 
 
@@ -15,7 +15,7 @@ class RecurringTransactionCreate(BaseModel):
     amount: Decimal
     currency: str = "USD"
     type: str  # debit, credit
-    frequency: str  # weekly, biweekly, monthly, quarterly, semiannual, yearly
+    frequency: str  # weekly, biweekly, monthly, bimonthly, quarterly, semiannual, yearly
     weekend_adjustment: WeekendAdjustment = "none"
     day_of_month: Optional[DayOfMonth] = None
     start_date: _Date
@@ -40,6 +40,10 @@ class RecurringTransactionUpdate(BaseModel):
     category_id: Optional[uuid.UUID] = None
     is_active: Optional[bool] = None
     auto_generate: Optional[bool] = None
+
+
+class RecurringOccurrenceMaterialize(BaseModel):
+    date: _Date
 
 
 class RecurringTransactionRead(BaseModel):

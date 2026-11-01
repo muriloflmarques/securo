@@ -1,4 +1,4 @@
-"""Tests for the Alembic revision chain guard.
+"""Tests for the Alembic revision graph guard.
 
 The guard exists because two branches can each pick the same next revision
 number and stay green until they are both on main, where `alembic upgrade
@@ -84,6 +84,17 @@ def test_two_heads_without_duplicate_ids_are_reported(versions: Path):
     problems = check(versions)
 
     assert any("expected exactly one head, found 2" in p for p in problems)
+
+
+def test_merge_revision_joins_two_heads(versions: Path):
+    _write(versions, "004_branch_a.py", "004", "003")
+    _write(versions, "005_branch_b.py", "005", "003")
+    versions.joinpath("006_merge.py").write_text(
+        _TEMPLATE.format(description="merge", revision="006", down='("004", "005")'),
+        encoding="utf-8",
+    )
+
+    assert check(versions) == []
 
 
 def test_missing_down_revision_target_is_reported(versions: Path):

@@ -8,6 +8,13 @@ class ReportBreakdown(BaseModel):
     color: str
 
 
+class ReportDataRange(BaseModel):
+    """Oldest and newest transaction dates the workspace has (issue #765)."""
+
+    min_date: str | None = None
+    max_date: str | None = None
+
+
 class ReportSummary(BaseModel):
     primary_value: float
     change_amount: float
@@ -21,6 +28,9 @@ class ReportCompositionItem(BaseModel):
     value: float
     color: str
     group: str
+    category_group_key: str | None = None
+    category_group_label: str | None = None
+    category_group_color: str | None = None
 
 
 class ReportDataPoint(BaseModel):

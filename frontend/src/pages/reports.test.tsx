@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 
 import ReportsPage from '@/pages/reports'
 import { renderWithProviders, t } from '@/test/utils'
@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
     netWorth: vi.fn(),
     incomeExpenses: vi.fn(),
     cashFlow: vi.fn(),
+    dataRange: vi.fn(),
   },
   // The page reads the workspace timezone to tell a balance that is already
   // negative from one that crosses later. Unresolved here, which lands on the
@@ -53,9 +54,80 @@ beforeEach(() => {
   api.reports.netWorth.mockResolvedValue(emptyReport('net_worth'))
   api.reports.incomeExpenses.mockResolvedValue(emptyReport('income_expenses'))
   api.reports.cashFlow.mockResolvedValue(emptyReport('cash_flow'))
+  // No data by default: the year picker stays hidden unless a test opts in.
+  api.reports.dataRange.mockResolvedValue({ min_date: null, max_date: null })
 })
 
 afterEach(() => vi.useRealTimers())
+
+it('shows grouped currency with two decimals in the composition center', async () => {
+  api.reports.incomeExpenses.mockResolvedValue({
+    ...emptyReport('income_expenses'),
+    summary: {
+      primary_value: -22241.3,
+      change_amount: 0,
+      change_percent: null,
+      breakdowns: [
+        { key: 'income', label: 'Income', value: 1, color: '#10B981' },
+        { key: 'expenses', label: 'Expenses', value: 3243.5, color: '#F43F5E' },
+      ],
+    },
+    composition: [
+      { key: 'rent', label: 'Rent', value: 3243.5, color: '#654321', group: 'expenses' },
+    ],
+  })
+
+  const { user } = renderWithProviders(<ReportsPage />)
+  await user.click(screen.getByRole('button', { name: t('reports.incomeExpenses') }))
+  const composition = within(screen.getByTestId('report-composition'))
+  expect(await composition.findByText('-$22,241.30')).toBeInTheDocument()
+
+  await user.click(composition.getByRole('button', { name: t('reports.byExpenses') }))
+  expect(composition.getByText('$3,243.50')).toBeInTheDocument()
+})
+
+it('groups expense categories in the composition legend only on Income vs Expenses', async () => {
+  api.reports.incomeExpenses.mockResolvedValue({
+    ...emptyReport('income_expenses'),
+    summary: {
+      primary_value: -30,
+      change_amount: 0,
+      change_percent: null,
+      breakdowns: [
+        { key: 'income', label: 'Income', value: 70, color: '#10B981' },
+        { key: 'expenses', label: 'Expenses', value: 100, color: '#F43F5E' },
+      ],
+    },
+    composition: [
+      { key: 'water', label: 'Water', value: 60, color: '#123456', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+      { key: 'rent', label: 'Rent', value: 40, color: '#654321', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+      { key: 'salary', label: 'Salary', value: 70, color: '#10B981', group: 'income' },
+    ],
+    trend: [{
+      date: '2026-01-01', value: -30, breakdowns: { income: 70, expenses: 100 }, change: null,
+      composition: [
+        { key: 'water', label: 'Water', value: 15, color: '#123456', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+        { key: 'rent', label: 'Rent', value: 25, color: '#654321', group: 'expenses', category_group_key: 'home', category_group_label: 'Casa', category_group_color: '#3b82f6' },
+      ],
+    }],
+  })
+
+  const { user } = renderWithProviders(<ReportsPage />)
+  await user.click(screen.getByRole('button', { name: t('reports.incomeExpenses') }))
+  await waitFor(() => expect(api.reports.incomeExpenses).toHaveBeenCalled())
+  await user.click(screen.getByRole('button', { name: t('reports.byCategory') }))
+
+  const composition = within(screen.getByTestId('report-composition'))
+  const legend = within(composition.getByTestId('composition-summary-legend'))
+  expect(legend.getAllByText('Casa')).toHaveLength(1)
+  expect(legend.queryByText('Water')).not.toBeInTheDocument()
+  expect(legend.queryByText('Rent')).not.toBeInTheDocument()
+  expect(legend.queryByText('Salary')).not.toBeInTheDocument()
+  expect(legend.queryByText('Expenses')).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: t('reports.cashFlow') }))
+  expect(screen.queryByRole('button', { name: t('reports.byCategory') })).not.toBeInTheDocument()
+})
 
 describe('Reports page — Custom range segment', () => {
   it('loads the Net Worth tab with the 1Y preset by default', async () => {
@@ -332,5 +404,157 @@ describe('Reports page, cash-flow runway', () => {
     await screen.findAllByText('$1,000.00')
 
     expect(screen.queryByTestId('cash-flow-runway')).not.toBeInTheDocument()
+  })
+})
+
+describe('Reports page: month presets and period navigation (issue #519)', () => {
+  it('offers This Month and Last Month with exact month windows', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    expect(await screen.findByRole('heading', { name: 'Net Worth' })).toBeInTheDocument()
+
+    // The default preset (1Y) keeps the API-anchored window: no explicit dates.
+    expect(api.reports.netWorth.mock.calls.at(-1)?.slice(-2)).toEqual([undefined, undefined])
+
+    await user.click(screen.getByRole('button', { name: 'This Month' }))
+    expect(api.reports.netWorth.mock.calls.at(-1)?.slice(-2)).toEqual(['2026-09-01', '2026-09-12'])
+    expect(screen.getByTestId('reports-period-label')).toHaveTextContent('September 2026')
+
+    await user.click(screen.getByRole('button', { name: 'Last Month' }))
+    expect(api.reports.netWorth.mock.calls.at(-1)?.slice(-2)).toEqual(['2026-08-01', '2026-08-31'])
+    expect(screen.getByTestId('reports-period-label')).toHaveTextContent('August 2026')
+  })
+
+  it('steps the active period back and forward with the arrows', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    await screen.findByRole('heading', { name: 'Net Worth' })
+    await user.click(screen.getByRole('button', { name: 'This Month' }))
+
+    const prev = screen.getByRole('button', { name: 'Previous period' })
+    const next = screen.getByRole('button', { name: 'Next period' })
+    expect(next).toBeDisabled()
+
+    await user.click(prev)
+    expect(screen.getByTestId('reports-period-label')).toHaveTextContent('August 2026')
+    expect(api.reports.netWorth.mock.calls.at(-1)?.slice(-2)).toEqual(['2026-08-01', '2026-08-31'])
+    expect(next).not.toBeDisabled()
+
+    await user.click(next)
+    expect(screen.getByTestId('reports-period-label')).toHaveTextContent('September 2026')
+    expect(api.reports.netWorth.mock.calls.at(-1)?.slice(-2)).toEqual(['2026-09-01', '2026-09-12'])
+    expect(next).toBeDisabled()
+  })
+
+  it('steps a macro preset back by a whole window and labels the covered span', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    await screen.findByRole('heading', { name: 'Net Worth' })
+    await user.click(screen.getByRole('button', { name: '6M' }))
+
+    expect(screen.getByTestId('reports-period-label')).toHaveTextContent('6M')
+    await user.click(screen.getByRole('button', { name: 'Previous period' }))
+
+    expect(api.reports.netWorth.mock.calls.at(-1)?.slice(-2)).toEqual(['2025-08-01', '2026-02-28'])
+    expect(screen.getByTestId('reports-period-label')).toHaveTextContent('Aug 2025 - Feb 2026')
+  })
+
+  it('does not carry a stepped window into the Cash Flow forecast', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    await screen.findByRole('heading', { name: 'Net Worth' })
+    await user.click(screen.getByRole('button', { name: '6M' }))
+    await user.click(screen.getByRole('button', { name: 'Previous period' }))
+
+    await user.click(screen.getByRole('button', { name: t('reports.cashFlow') }))
+    await waitFor(() => expect(api.reports.cashFlow).toHaveBeenCalled())
+
+    expect(api.reports.cashFlow.mock.calls.at(-1)?.[0]).toBe(6)
+  })
+
+  it('hides period navigation on the forward-only Cash Flow tab', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    await screen.findByRole('heading', { name: 'Net Worth' })
+    expect(screen.getByRole('button', { name: 'Previous period' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: t('reports.cashFlow') }))
+    expect(screen.queryByRole('button', { name: 'Previous period' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('reports-period-nav')).not.toBeInTheDocument()
+  })
+})
+
+describe('Reports page - year picker (issue #765)', () => {
+  beforeEach(() => {
+    api.reports.dataRange.mockResolvedValue({ min_date: '2023-04-10', max_date: '2026-09-12' })
+  })
+
+  it('lists every year from this year back to the oldest transaction', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    const trigger = await screen.findByRole('button', { name: t('reports.year') })
+    await user.click(trigger)
+    await screen.findByRole('button', { name: '2026' })
+    expect(screen.getByRole('button', { name: '2025' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2024' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2023' })).toBeInTheDocument()
+  })
+
+  it('commits the picked past year as a Jan 1 to Dec 31 range', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    const trigger = await screen.findByRole('button', { name: t('reports.year') })
+    await user.click(trigger)
+    await user.click(await screen.findByRole('button', { name: '2023' }))
+
+    // Full calendar year: 364 days, ceil(364/30) = 13 monthly buckets.
+    expect(api.reports.netWorth).toHaveBeenCalledWith(
+      13, 'monthly', undefined, undefined, undefined, '2023-01-01', '2023-12-31',
+    )
+    // The custom segment is now the active range and shows the span.
+    expect(screen.getByRole('button', { name: t('reports.customRange') })).toHaveClass('bg-primary')
+    expect(screen.getByRole('button', { name: t('reports.customRange') })).toHaveTextContent('Jan 01 - Dec 31')
+    // The trigger highlights the year that is currently on screen.
+    expect(screen.getByRole('button', { name: `${t('reports.year')} 2023` })).toHaveClass('bg-primary')
+  })
+
+  it('ends the current year at today', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    const trigger = await screen.findByRole('button', { name: t('reports.year') })
+    await user.click(trigger)
+    await user.click(await screen.findByRole('button', { name: '2026' }))
+
+    // Jan 1 through today (2026-09-12): 254 days, ceil(254/30) = 9.
+    expect(api.reports.netWorth).toHaveBeenCalledWith(
+      9, 'monthly', undefined, undefined, undefined, '2026-01-01', '2026-09-12',
+    )
+  })
+
+  it('hides the picker when the data spans a single year', async () => {
+    // Two phases: the same widget shows for multi-year data and disappears
+    // once the data no longer covers a previous year.
+    renderWithProviders(<ReportsPage />)
+    await screen.findByRole('button', { name: t('reports.year') })
+    cleanup()
+
+    api.reports.dataRange.mockResolvedValue({ min_date: '2026-01-05', max_date: '2026-09-12' })
+    renderWithProviders(<ReportsPage />)
+    await screen.findByRole('heading', { name: 'Net Worth' })
+    expect(screen.queryByRole('button', { name: t('reports.year') })).not.toBeInTheDocument()
+  })
+
+  it('hides the picker when the data range fails to load', async () => {
+    renderWithProviders(<ReportsPage />)
+    await screen.findByRole('button', { name: t('reports.year') })
+    cleanup()
+
+    api.reports.dataRange.mockRejectedValue(new Error('network down'))
+    renderWithProviders(<ReportsPage />)
+    await screen.findByRole('heading', { name: 'Net Worth' })
+    expect(screen.queryByRole('button', { name: t('reports.year') })).not.toBeInTheDocument()
+  })
+
+  it('is not offered on the forward-only Cash Flow tab', async () => {
+    const { user } = renderWithProviders(<ReportsPage />)
+    const trigger = await screen.findByRole('button', { name: t('reports.year') })
+    expect(trigger).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: t('reports.cashFlow') }))
+    await screen.findByRole('heading', { name: t('reports.cashFlow') })
+    expect(screen.queryByRole('button', { name: t('reports.year') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: `${t('reports.year')} 2026` })).not.toBeInTheDocument()
   })
 })

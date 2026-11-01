@@ -110,6 +110,12 @@ def test_filename_prefix_must_match_revision_id(versions: Path):
     assert any("filename starts with '999'" in p for p in problems)
 
 
+def test_revision_id_with_numeric_suffix_passes(versions: Path):
+    _write(versions, "004_001_local.py", "004_001", "003")
+
+    assert check(versions) == []
+
+
 def test_unparseable_file_is_reported(versions: Path):
     versions.joinpath("004_broken.py").write_text("# no revision here\n", encoding="utf-8")
 

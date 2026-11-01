@@ -24,6 +24,7 @@ from app.models.asset import Asset
 from app.models.asset_value import AssetValue
 from app.models.bank_connection import BankConnection
 from app.models.category import Category
+from app.models.category_group import CategoryGroup
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
 from app.services.report_service import (
@@ -229,6 +230,38 @@ async def test_income_expenses_basic_structure(session, test_user, test_workspac
         assert len(ct.series) == len(report.trend)
 
 
+async def test_income_expenses_composition_includes_parent_category_groups(
+    session, test_user, test_workspace,
+):
+    home = CategoryGroup(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=test_workspace.id,
+        name="Casa", icon="house", color="#3b82f6", position=0,
+    )
+    session.add(home)
+    await session.commit()
+    rent = await _make_category(session, test_user.id, "Aluguel")
+    water = await _make_category(session, test_user.id, "Água")
+    rent.group_id = home.id
+    water.group_id = home.id
+    await session.commit()
+    account = await _make_account(session, test_user.id, "Home expenses")
+    today = date.today()
+    await _add_txn(session, test_user.id, account.id, 80, "debit", today, category_id=rent.id)
+    await _add_txn(session, test_user.id, account.id, 20, "debit", today, category_id=water.id)
+
+    report = await get_income_expenses_report(
+        session, test_workspace.id, test_user.id, interval="daily",
+        start_date=today, end_date=today,
+    )
+    for items in (report.composition, report.trend[0].composition):
+        expenses = {item.key: item for item in items if item.group == "expenses"}
+        assert set(expenses) == {str(rent.id), str(water.id)}
+        for item in expenses.values():
+            assert item.category_group_key == str(home.id)
+            assert item.category_group_label == "Casa"
+            assert item.category_group_color == "#3b82f6"
+
+
 async def test_income_expenses_empty_data(session, test_user, test_workspace):
     """No transactions → zeroed summary, empty composition / category trend."""
     report = await get_income_expenses_report(
@@ -272,11 +305,14 @@ async def test_income_expenses_yearly_interval(session, test_user, test_workspac
     assert bd["income"] == pytest.approx(2000.0)
 
 
-async def test_income_expenses_excludes_opening_and_closed(session, test_user, test_workspace):
-    """opening_balance source and closed accounts contribute nothing."""
+async def test_income_expenses_excludes_opening_but_keeps_closed_history(
+    session, test_user, test_workspace
+):
+    """opening_balance rows contribute nothing; a closed account's history still counts."""
     closed = await _make_account(session, test_user.id, "IE Closed", is_closed=True)
     today = date.today()
     await _add_txn(session, test_user.id, closed.id, 1000, "credit", today)
+    await _add_txn(session, test_user.id, closed.id, 300, "debit", today)
 
     open_acct = await _make_account(session, test_user.id, "IE Open")
     await _add_txn(session, test_user.id, open_acct.id, 7000, "credit", today, source="opening_balance")
@@ -285,8 +321,8 @@ async def test_income_expenses_excludes_opening_and_closed(session, test_user, t
         session, test_workspace.id, test_user.id, months=2, interval="monthly"
     )
     bd = {b.key: b.value for b in report.summary.breakdowns}
-    assert bd["income"] == 0.0
-    assert bd["expenses"] == 0.0
+    assert bd["income"] == 1000.0
+    assert bd["expenses"] == 300.0
 
 
 async def test_income_expenses_with_recurring_projection(session, test_user, test_workspace):
@@ -610,6 +646,67 @@ async def test_income_expenses_owner_split_offset(session, test_user, test_works
     dinner = next((c for c in report.composition if c.label == "Dinner"), None)
     assert dinner is not None
     assert dinner.value == pytest.approx(600.0)
+
+
+async def test_income_expenses_composition_ignores_splits_in_other_workspaces(
+    session, test_user, test_workspace
+):
+    """A split the user owns in another workspace must not shrink this
+    workspace's composition. Uncategorized is the bucket both workspaces
+    share, since every category belongs to one workspace."""
+    from app.models.group import Group, GroupMember
+    from app.models.transaction_split import TransactionSplit
+    from app.models.workspace import Workspace, WorkspaceMember
+
+    other_ws = Workspace(
+        id=uuid.uuid4(), name="Other", kind="personal",
+        created_by_user_id=test_user.id, default_currency="BRL",
+    )
+    session.add(other_ws)
+    await session.flush()
+    session.add(WorkspaceMember(
+        id=uuid.uuid4(), workspace_id=other_ws.id, user_id=test_user.id, role="owner",
+    ))
+    other_acct = Account(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=other_ws.id,
+        name="Other Acct", type="checking", balance=Decimal("0"), currency="BRL",
+    )
+    group = Group(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=other_ws.id,
+        name="Trip", kind="shared", default_currency="BRL",
+    )
+    session.add_all([other_acct, group])
+    await session.flush()
+    friend = GroupMember(
+        id=uuid.uuid4(), group_id=group.id, workspace_id=other_ws.id,
+        name="Friend", is_self=False,
+    )
+    session.add(friend)
+    await session.commit()
+
+    today = date.today()
+    acct = await _make_account(session, test_user.id, "Main Acct")
+    await _add_txn(session, test_user.id, acct.id, 500, "debit", today)
+    other_txn = await _add_txn(
+        session, test_user.id, other_acct.id, 1000, "debit", today,
+        workspace_id=other_ws.id,
+    )
+    session.add(TransactionSplit(
+        id=uuid.uuid4(), transaction_id=other_txn.id, workspace_id=other_ws.id,
+        group_member_id=friend.id, share_amount=Decimal("200"), share_type="amount",
+    ))
+    await session.commit()
+
+    report = await get_income_expenses_report(
+        session, test_workspace.id, test_user.id, months=2, interval="monthly"
+    )
+
+    uncategorized = next(
+        (c for c in report.composition if c.key == "uncategorized" and c.group == "expenses"),
+        None,
+    )
+    assert uncategorized is not None
+    assert uncategorized.value == pytest.approx(500.0)
 
 
 async def test_income_expenses_trend_points_have_per_period_composition(session, test_user, test_workspace):

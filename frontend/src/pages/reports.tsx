@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
+import { loadReportsRange, saveReportsRange, type ReportsRange } from '@/lib/remembered-range'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { useQuery } from '@tanstack/react-query'
@@ -18,7 +19,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import { AlertCircle, HelpCircle, X } from 'lucide-react'
+import { AlertCircle, CalendarDays, ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react'
 import { reports } from '@/lib/api'
 import { extractApiError } from '@/lib/api-errors'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -32,7 +33,15 @@ import { useCollectionFilter } from '@/contexts/collection-filter-context'
 import type { ReportResponse, CategoryTrendItem } from '@/types'
 import { formatCurrency } from '@/lib/format'
 import { localDateString, todayInTimezone } from '@/lib/date-utils'
+import { monthLabel } from '@/lib/month-utils'
+import { periodWindow, windowMonths, type PeriodPreset } from '@/lib/report-period'
 import { useEffectiveTimezone } from '@/hooks/use-timezone'
+import { WorkspaceContext } from '@/contexts/workspace-context'
+import {
+  formatNetWorthAxisTick,
+  getNetWorthDomain,
+  shouldFillNetWorthArea,
+} from '@/lib/net-worth-chart-utils'
 
 // A small qualitative palette of well-separated hues for the composition
 // detail ring. Capped to a handful of slices, distinct colours make each
@@ -63,13 +72,32 @@ function formatCompact(value: number, currency = 'USD', locale = 'en-US') {
   }).format(value)
 }
 
+function formatCompositionAmount(value: number, currency: string, locale: string) {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    useGrouping: true,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.round(value * 100) === 0 ? 0 : value)
+}
+
+/** "Apr 2026" from a YYYY-MM-DD date, in the display locale. */
+function formatShortMonth(isoDate: string, locale: string) {
+  const [y, m] = isoDate.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString(locale, { month: 'short', year: 'numeric' })
+}
+
 
 
 // `days` (when set) asks for an exact rolling window ending today rather than
-// the month-aligned window `months` produces.
-type RangeOption = { key: string; months: number; period?: 'ytd'; days?: number }
+// the month-aligned window `months` produces. `monthAnchor` marks the month
+// presets (This Month / Last Month), which always send explicit dates.
+type RangeOption = { key: string; months: number; period?: 'ytd'; days?: number; monthAnchor?: number }
 
 const HISTORICAL_RANGE_OPTIONS: readonly RangeOption[] = [
+  { key: 'this_month', months: 1, monthAnchor: 0 },
+  { key: 'last_month', months: 1, monthAnchor: -1 },
   { key: '6m', months: 6 },
   { key: 'ytd', months: 12, period: 'ytd' },
   { key: '1y', months: 12 },
@@ -85,6 +113,8 @@ const FORWARD_RANGE_OPTIONS: readonly RangeOption[] = [
 // The Money Map answers "where did my money go lately", so it leans on recent
 // windows (down to 30 days) and drops the 2Y trend view the other tabs keep.
 const MONEY_MAP_RANGE_OPTIONS: readonly RangeOption[] = [
+  { key: 'this_month', months: 1, monthAnchor: 0 },
+  { key: 'last_month', months: 1, monthAnchor: -1 },
   { key: '30d', months: 1, days: 30 },
   { key: '3m', months: 3 },
   { key: '6m', months: 6 },
@@ -120,6 +150,8 @@ const RANGE_LABELS: Record<string, string> = {
   ytd: 'rangeYtd',
   '12m': 'range12m',
   '2y': 'range2y',
+  this_month: 'rangeThisMonth',
+  last_month: 'rangeLastMonth',
   custom: 'customRange',
 }
 
@@ -176,8 +208,29 @@ const REPORT_TABS: ReportTab[] = [
   },
 ]
 
+/** The range last used on `tab`, if it is still one the tab offers. */
+function storedReportsRange(tab: ReportTab): ReportsRange | null {
+  const stored = loadReportsRange(tab.key)
+  if (!stored) return null
+  const isCustom = stored.rangeKey === CUSTOM_RANGE_KEY
+  const rangeOk = isCustom
+    ? tab.supportsCustomRange && !!stored.from && !!stored.to
+    : tab.rangeOptions.some((r) => r.key === stored.rangeKey)
+  if (!rangeOk) return null
+  const interval = tab.intervalOptions.some((i) => i.value === stored.interval)
+    ? stored.interval
+    : tab.fallbackInterval
+  return { ...stored, interval, ...(isCustom ? {} : { from: '', to: '' }) }
+}
+
 export default function ReportsPage() {
   const timeZone = useEffectiveTimezone()
+  // Read through the context object so the page still renders outside a
+  // WorkspaceProvider. Mirrors the backend's financial year start (April for
+  // India, January elsewhere), so stepping back from YTD lands on whole
+  // financial years.
+  const workspaceCtx = useContext(WorkspaceContext)
+  const fyStartMonth = (workspaceCtx?.current?.tax_jurisdiction ?? '').toUpperCase() === 'IN' ? 4 : 1
   const { t } = useTranslation()
   const { mask, privacyMode, MASK } = usePrivacyMode()
   const { user } = useAuth()
@@ -185,15 +238,31 @@ export default function ReportsPage() {
   const locale = useDisplayLocale()
 
   const customDefaults = defaultCustomRange()
-  const [rangeKey, setRangeKey] = useState('1y')
-  const [interval, setInterval] = useState('monthly')
+  // The page opens on the first tab with the range last used there (issue
+  // #1053), or that tab's defaults if what was stored doesn't apply to it.
+  const [initialRange] = useState<ReportsRange>(() => storedReportsRange(REPORT_TABS[0]) ?? {
+    rangeKey: REPORT_TABS[0].fallbackRangeKey,
+    from: '',
+    to: '',
+    interval: REPORT_TABS[0].fallbackInterval,
+  })
+  const [rangeKey, setRangeKey] = useState(initialRange.rangeKey)
+  const [interval, setInterval] = useState(initialRange.interval)
   // Custom range endpoints (YYYY-MM-DD) — populated when the user opens the
   // Custom preset and confirms a date range. Preserved across tab switches
   // that still support custom ranges so the picker doesn't forget its
   // selection while the user compares views.
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo] = useState('')
-  const [activeTab, setActiveTab] = useState('net_worth')
+  const [customFrom, setCustomFrom] = useState(initialRange.from)
+  const [customTo, setCustomTo] = useState(initialRange.to)
+  // Period navigation (issue #519): how many periods of the active preset the
+  // window has been stepped back. 0 means the window still ends today.
+  const [periodOffset, setPeriodOffset] = useState(initialRange.periodOffset ?? 0)
+  const [activeTab, setActiveTab] = useState(REPORT_TABS[0].key)
+  // Each tab keeps its own range: Cash Flow clamping to its forward presets
+  // must not overwrite what Net Worth was showing.
+  useEffect(() => {
+    saveReportsRange(activeTab, { rangeKey, from: customFrom, to: customTo, interval, periodOffset })
+  }, [activeTab, rangeKey, customFrom, customTo, interval, periodOffset])
   const [compositionView, setCompositionView] = useState<string>('netWorth')
   const [sparklineView, setSparklineView] = useState<'byExpenses' | 'byIncome'>('byExpenses')
   const [sparklinePage, setSparklinePage] = useState(0)
@@ -224,6 +293,24 @@ export default function ReportsPage() {
   const isCustomRange = supportsCustomRange && rangeKey === CUSTOM_RANGE_KEY
   const hasCustomRange = isCustomRange && !!customFrom && !!customTo
   const selectedRange = rangeOptions.find((r) => r.key === rangeKey) ?? rangeOptions[0]
+  // Period navigation (issue #519): a nonzero offset re-sends the same window
+  // stepped back by its own length, as explicit start/end dates. At offset 0
+  // the presets keep the API's `months` / `period` / `days` anchoring, so
+  // existing behavior and cache keys are untouched.
+  const periodPreset: PeriodPreset = isCustomRange
+    ? { kind: 'custom' }
+    : selectedRange.monthAnchor !== undefined
+      ? { kind: 'month', anchorDelta: selectedRange.monthAnchor }
+      : selectedRange.period === 'ytd'
+        ? { kind: 'ytd', fyStartMonth }
+        : selectedRange.days
+          ? { kind: 'days', days: selectedRange.days }
+          : { kind: 'rolling', months: selectedRange.months }
+  // Cash Flow is a forward projection with no period navigation: it never
+  // takes a stepped window, even if an offset was carried over from another tab.
+  const navWindow = isCashFlow
+    ? null
+    : periodWindow(periodPreset, todayInTimezone(timeZone), periodOffset, { from: customFrom, to: customTo })
   // In custom mode, translate the picked span into an equivalent `months`
   // value so downstream logic (interval bucketing, forecast fan-out) keeps
   // working. Backend uses start_date/end_date directly when they're set.
@@ -240,11 +327,23 @@ export default function ReportsPage() {
         ),
       )
     : selectedRange.months
-  const months = isCustomRange ? customMonths : selectedRange.months
-  const period = isCustomRange ? undefined : selectedRange.period
-  const days = isCustomRange ? undefined : selectedRange.days
-  const apiStart = hasCustomRange ? customFrom : undefined
-  const apiEnd = hasCustomRange ? customTo : undefined
+  const months = navWindow ? windowMonths(navWindow) : isCustomRange ? customMonths : selectedRange.months
+  const period = navWindow || isCustomRange ? undefined : selectedRange.period
+  const days = navWindow || isCustomRange ? undefined : selectedRange.days
+  const apiStart = navWindow ? navWindow.from : hasCustomRange ? customFrom : undefined
+  const apiEnd = navWindow ? navWindow.to : hasCustomRange ? customTo : undefined
+  // Label for the period being viewed: the month name for the month presets,
+  // the covered span when the window has been stepped back or is custom, and
+  // the preset's own name while the window still ends today.
+  const activeWindow = navWindow ?? (hasCustomRange ? { from: customFrom, to: customTo } : null)
+  const periodLabel =
+    isCustomRange && !activeWindow
+      ? t('reports.customRange')
+      : activeWindow && selectedRange.monthAnchor !== undefined
+        ? monthLabel(activeWindow.from.slice(0, 7), locale)
+        : activeWindow
+          ? `${formatShortMonth(activeWindow.from, locale)} - ${formatShortMonth(activeWindow.to, locale)}`
+          : t(`reports.${RANGE_LABELS[selectedRange.key]}`)
 
   const handleSelectTab = (key: string) => {
     const nextTab = REPORT_TABS.find((tab) => tab.key === key) ?? REPORT_TABS[0]
@@ -252,16 +351,62 @@ export default function ReportsPage() {
     setCompositionView(key === 'net_worth' ? 'netWorth' : 'net')
     setSparklinePage(0)
     setSelectedDate(null)
+    const remembered = storedReportsRange(nextTab)
+    if (remembered) {
+      setRangeKey(remembered.rangeKey)
+      setInterval(remembered.interval)
+      setPeriodOffset(nextTab.key === 'cash_flow' ? 0 : (remembered.periodOffset ?? 0))
+      if (remembered.rangeKey === CUSTOM_RANGE_KEY) {
+        setCustomFrom(remembered.from)
+        setCustomTo(remembered.to)
+      }
+      return
+    }
     // Clamp the range/interval preset to what the new tab supports.
     const stillValid =
       (rangeKey === CUSTOM_RANGE_KEY && nextTab.supportsCustomRange) ||
       nextTab.rangeOptions.some((r) => r.key === rangeKey)
     if (!stillValid) {
       setRangeKey(nextTab.fallbackRangeKey)
+      setPeriodOffset(0)
+    } else if (nextTab.key === 'cash_flow') {
+      setPeriodOffset(0)
     }
     if (!nextTab.intervalOptions.some((i) => i.value === interval)) {
       setInterval(nextTab.fallbackInterval)
     }
+  }
+
+  // Year picker (issue #765): one entry per year the workspace's data
+  // covers, from this year back to the oldest transaction. Hidden until the
+  // data spans at least two years, and never on Cash Flow, which has no
+  // custom range a picked year can be committed into.
+  const { data: dataRange } = useQuery({
+    queryKey: ['reports', 'data-range'],
+    queryFn: reports.dataRange,
+    staleTime: 5 * 60 * 1000,
+  })
+  const todayStr = todayInTimezone(timeZone)
+  const currentYear = Number(todayStr.slice(0, 4))
+  const minYear = dataRange?.min_date ? Number(dataRange.min_date.slice(0, 4)) : null
+  const yearOptions =
+    minYear !== null && minYear < currentYear
+      ? Array.from({ length: currentYear - minYear + 1 }, (_, i) => currentYear - i)
+      : []
+  // The year a committed custom range covers exactly: Jan 1 through
+  // Dec 31, or through today for the current year.
+  const activeYear = yearOptions.find(
+    (year) =>
+      isCustomRange &&
+      customFrom === `${year}-01-01` &&
+      customTo === (year === currentYear ? todayStr : `${year}-12-31`),
+  )
+  const handleYearPick = (year: number) => {
+    setCustomFrom(`${year}-01-01`)
+    setCustomTo(year === currentYear ? todayStr : `${year}-12-31`)
+    setRangeKey(CUSTOM_RANGE_KEY)
+    setPeriodOffset(0)
+    setSelectedDate(null)
   }
 
   const { data, isLoading, isError, error, refetch } = useQuery<ReportResponse>({
@@ -302,6 +447,11 @@ export default function ReportsPage() {
       ...breakdowns,
     } as Record<string, string | number | null>
   })
+  const netWorthDomain = getNetWorthDomain(
+    chartData
+      .map((point) => point.value)
+      .filter((value): value is number => typeof value === 'number'),
+  )
 
   // Cash-flow runway: the first projected day below zero and the lowest
   // point of the horizon, both computed day by day on the backend.
@@ -374,16 +524,18 @@ export default function ReportsPage() {
   // Composition toggle options per report type
   const compositionOptions = activeTab === 'net_worth'
     ? ['netWorth', 'assetsAndAccounts', 'liabilities'] as const
-    : activeTab === 'income_expenses' || activeTab === 'cash_flow'
-      ? ['net', 'byIncome', 'byExpenses'] as const
-      : ['summary', 'detailed'] as const
+    : activeTab === 'income_expenses'
+      ? ['net', 'byIncome', 'byExpenses', 'byCategory'] as const
+      : activeTab === 'cash_flow'
+        ? ['net', 'byIncome', 'byExpenses'] as const
+        : ['summary', 'detailed'] as const
 
   // Which breakdown groups are visible in each toggle state. null = show all.
   const activeCompositionGroups: Set<string> | null = (() => {
     if (compositionView === 'assetsAndAccounts') return new Set(['accounts', 'assets'])
     if (compositionView === 'liabilities') return new Set(['liabilities'])
     if (compositionView === 'byIncome') return new Set(['income'])
-    if (compositionView === 'byExpenses') return new Set(['expenses'])
+    if (compositionView === 'byExpenses' || compositionView === 'byCategory') return new Set(['expenses'])
     return null
   })()
 
@@ -395,18 +547,6 @@ export default function ReportsPage() {
     key === 'projectedIncome' ? 'income'
       : key === 'projectedExpenses' ? 'expenses'
         : key
-
-  // Inner ring — summary view (high-level breakdown), filtered by toggle state for net_worth
-  const innerDonutData = (() => {
-    const excludedKeys = new Set(['netIncome', 'startingBalance', 'endingBalance'])
-    return compositionBreakdownData
-      .filter((b) => !excludedKeys.has(b.key) && (!activeCompositionGroups || activeCompositionGroups.has(groupOf(b.key))))
-      .map((b) => ({
-        name: t(`reports.${b.key}`, { defaultValue: b.label }),
-        value: b.value,
-        color: b.color,
-      }))
-  })()
 
   const activeComposition = snapshotTrendPoint?.composition ?? composition
 
@@ -479,10 +619,53 @@ export default function ReportsPage() {
       }))
   })()
 
+  // In the category view, each slice is a parent category group (for example
+  // Casa), combining its expense categories (such as Aluguel and Água).
+  const innerDonutData = (() => {
+    if (activeTab === 'income_expenses' && compositionView === 'byCategory') {
+      const byCategoryGroup = new Map<string, { name: string; value: number; color: string }>()
+      for (const item of activeComposition) {
+        if (item.group !== 'expenses' || item.value <= 0) continue
+        const key = item.category_group_key ?? 'ungrouped'
+        const existing = byCategoryGroup.get(key)
+        if (existing) {
+          existing.value += item.value
+        } else {
+          byCategoryGroup.set(key, {
+            name: item.category_group_key
+              ? (item.category_group_label ?? t('categories.noGroup'))
+              : t('categories.noGroup'),
+            value: item.value,
+            color: item.category_group_color ?? OTHER_SLICE_COLOR,
+          })
+        }
+      }
+      return [...byCategoryGroup.values()].sort((a, b) => b.value - a.value)
+    }
+    const excludedKeys = new Set(['netIncome', 'startingBalance', 'endingBalance'])
+    return compositionBreakdownData
+      .filter((b) => !excludedKeys.has(b.key) && (!activeCompositionGroups || activeCompositionGroups.has(groupOf(b.key))))
+      .map((b) => ({
+        name: t(`reports.${b.key}`, { defaultValue: b.label }),
+        value: b.value,
+        color: b.color,
+      }))
+  })()
+
+  const showNetCompositionValue = compositionView === 'netWorth' || compositionView === 'net' || !compositionView
+  const compositionCenterValue = snapshotTrendPoint
+    ? showNetCompositionValue
+      ? snapshotTrendPoint.value
+      : innerDonutData.reduce((sum, item) => sum + item.value, 0)
+    : showNetCompositionValue
+      ? meta?.type === 'cash_flow' ? (summary?.change_amount ?? 0) : (summary?.primary_value ?? 0)
+      : innerDonutData.reduce((sum, item) => sum + item.value, 0)
+
   // Outer ring — items above 3 % of total get their own slice; everything else
   // per group folds into one "Other <Group>" slice. Outer arcs are anchored to
   // inner ring values so per-item rounding never misaligns the two rings.
   const outerDonutData = (() => {
+    if (activeTab === 'income_expenses' && compositionView === 'byCategory') return []
     if (compositionDetail.length === 0) return []
 
     const excludedKeys = new Set(['netIncome', 'startingBalance', 'endingBalance'])
@@ -554,7 +737,7 @@ export default function ReportsPage() {
         section={t('reports.section')}
         title={t(currentTab.labelKey)}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {isCashFlow && (
               <div
                 className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
@@ -595,7 +778,7 @@ export default function ReportsPage() {
               {rangeOptions.map((opt) => (
                 <button
                   key={opt.key}
-                  onClick={() => { setRangeKey(opt.key); setSelectedDate(null) }}
+                  onClick={() => { setRangeKey(opt.key); setPeriodOffset(0); setSelectedDate(null) }}
                   className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
                     rangeKey === opt.key
                       ? 'bg-primary text-primary-foreground'
@@ -618,6 +801,7 @@ export default function ReportsPage() {
                   onChange={(f, to) => {
                     setCustomFrom(f)
                     setCustomTo(to)
+                    setPeriodOffset(0)
                     setRangeKey(f && to ? CUSTOM_RANGE_KEY : currentTab.fallbackRangeKey)
                     setSelectedDate(null)
                   }}
@@ -625,7 +809,77 @@ export default function ReportsPage() {
                   placeholder={t('reports.pickCustomRange')}
                 />
               )}
+              {supportsCustomRange && yearOptions.length > 1 && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={activeYear !== undefined ? `${t('reports.year')} ${activeYear}` : t('reports.year')}
+                      title={t('reports.yearPickerHelp')}
+                      className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        activeYear !== undefined
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      <CalendarDays className="mr-1 inline h-3.5 w-3.5" />
+                      {activeYear !== undefined ? activeYear : t('reports.year')}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-auto p-1">
+                    <div className="max-h-64 overflow-y-auto">
+                      {yearOptions.map((year) => (
+                        <button
+                          key={year}
+                          type="button"
+                          onClick={() => handleYearPick(year)}
+                          className={`block w-full px-3 py-1.5 text-left text-xs font-semibold transition-colors ${
+                            activeYear === year
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                          }`}
+                        >
+                          {year}
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
+            {/* Period navigation (issue #519): step the active window back and
+                forward through history, labeled with the period it shows. The
+                Cash Flow tab is a forward-only forecast, so it has no past to
+                step through. */}
+            {!isCashFlow && (
+              <div
+                className="flex items-center rounded-lg border border-border bg-card overflow-hidden"
+                data-testid="reports-period-nav"
+              >
+                <button
+                  type="button"
+                  aria-label={t('reports.periodPrev')}
+                  title={t('reports.periodPrev')}
+                  onClick={() => { setPeriodOffset((o) => o - 1); setSelectedDate(null) }}
+                  className="px-2 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="min-w-24 px-1 text-center text-xs font-semibold tabular-nums" data-testid="reports-period-label">
+                  {periodLabel}
+                </span>
+                <button
+                  type="button"
+                  aria-label={t('reports.periodNext')}
+                  title={t('reports.periodNext')}
+                  disabled={periodOffset === 0}
+                  onClick={() => { setPeriodOffset((o) => o + 1); setSelectedDate(null) }}
+                  className="px-2 py-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50 disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <div className={`flex items-center rounded-lg border border-border bg-card overflow-hidden ${isMoneyMap ? 'hidden' : ''}`}>
               {intervalOptions.map((opt) => (
                 <button
@@ -1045,15 +1299,15 @@ export default function ReportsPage() {
                   interval="preserveStartEnd"
                 />
                 <YAxis
+                  domain={netWorthDomain}
                   tickFormatter={(v) => {
                     if (privacyMode) return ''
-                    if (v === 0) return '0'
-                    return formatCompact(v, userCurrency, locale)
+                    return formatNetWorthAxisTick(v, netWorthDomain, userCurrency, locale)
                   }}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
                   tickLine={false}
-                  width={64}
+                  width={88}
                   tickCount={5}
                 />
                 <Tooltip
@@ -1086,7 +1340,7 @@ export default function ReportsPage() {
                   dataKey="value"
                   stroke="#6366F1"
                   strokeWidth={2.5}
-                  fill="url(#netWorthGrad)"
+                  fill={shouldFillNetWorthArea(netWorthDomain) ? 'url(#netWorthGrad)' : 'none'}
                   dot={false}
                   activeDot={{ r: 4, fill: '#6366F1' }}
                 />
@@ -1104,27 +1358,34 @@ export default function ReportsPage() {
       {/* Breakdown: Donut + Grouped Bar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         {/* Composition widget — summary ring + ranked, labelled detail bars */}
-        <div className={`rounded-xl border shadow-sm transition-colors ${selectedDate ? 'bg-primary/5 border-primary/50' : 'bg-card border-border'}`}>
-          <div className="px-5 pt-4 pb-2 flex flex-col gap-2 min-[635px]:flex-row min-[635px]:items-start min-[635px]:justify-between lg:flex-col lg:items-start xl:flex-row xl:items-start xl:justify-between">
-            <div className="flex flex-col">
-              <p className="text-sm font-semibold text-foreground">{t('reports.composition')}</p>
+        <div data-testid="report-composition" className={`rounded-xl border shadow-sm transition-colors ${selectedDate ? 'bg-primary/5 border-primary/50' : 'bg-card border-border'}`}>
+          <div className="px-5 pt-4 pb-2 flex flex-col items-center gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-1 sm:px-4">
+            <div className={selectedDate ? 'flex flex-col items-center sm:items-start' : 'hidden sm:flex sm:flex-col sm:items-start'}>
+              <p className="hidden sm:block text-sm font-semibold text-foreground">{t('reports.composition')}</p>
               {selectedDate && (
                 <span className="text-xs text-primary font-medium">{t('reports.asOf', { date: selectedDate })}</span>
               )}
             </div>
-            <div className="flex items-stretch rounded-lg border border-border bg-muted/30 overflow-hidden w-fit">
+            <div className="flex min-w-0 max-w-full flex-nowrap items-stretch overflow-x-auto rounded-lg border border-border bg-muted/30">
               {compositionOptions.map((opt) => (
                 <button
                   key={opt}
                   type="button"
                   onClick={() => setCompositionView(opt)}
-                  className={`px-2 py-1 text-[11px] font-semibold text-center transition-colors ${
+                  aria-label={t(`reports.${opt}`)}
+                  className={`shrink-0 whitespace-nowrap px-1.5 py-1 text-[11px] font-semibold text-center transition-colors ${
                     compositionView === opt
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  {t(`reports.${opt}`)}
+                  <span aria-hidden="true" className="sm:hidden">
+                    {opt === 'byIncome' ? t('reports.income')
+                      : opt === 'byExpenses' ? t('reports.expenses')
+                        : opt === 'byCategory' ? t('categories.title')
+                          : t(`reports.${opt}`)}
+                  </span>
+                  <span aria-hidden="true" className="hidden sm:inline">{t(`reports.${opt}`)}</span>
                 </button>
               ))}
             </div>
@@ -1240,28 +1501,17 @@ export default function ReportsPage() {
                               : compositionView === 'liabilities'
                                 ? t(isHistoricalSnapshot ? 'reports.youOwed' : 'reports.youOwe', { defaultValue: isHistoricalSnapshot ? 'You Owed' : 'You Owe' })
                                 : compositionView === 'byIncome' ? t('reports.income')
-                                : compositionView === 'byExpenses' ? t('reports.expenses')
+                                : compositionView === 'byExpenses' || compositionView === 'byCategory' ? t('reports.expenses')
                                 : meta?.type === 'income_expenses' ? t('reports.netIncome')
                                 : t(currentTab.labelKey)}
                           </span>
-                          <span className="text-base font-bold text-foreground tabular-nums">
-                            {mask(formatCompact(
-                              snapshotTrendPoint
-                                ? compositionView === 'netWorth' || compositionView === 'net' || !compositionView
-                                  ? snapshotTrendPoint.value
-                                  : innerDonutData.reduce((s, d) => s + d.value, 0)
-                                : compositionView === 'netWorth' || compositionView === 'net' || !compositionView
-                                  ? meta?.type === 'cash_flow'
-                                    ? (summary?.change_amount ?? 0)
-                                    : (summary?.primary_value ?? 0)
-                                  : innerDonutData.reduce((s, d) => s + d.value, 0),
-                              userCurrency, locale
-                            ))}
+                          <span className="text-sm font-bold text-foreground tabular-nums whitespace-nowrap">
+                            {mask(formatCompositionAmount(compositionCenterValue, userCurrency, locale))}
                           </span>
                         </div>
                       </div>
                       <div key={compositionView} className="flex flex-col items-center gap-1 px-3 mt-1 w-full">
-                        <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+                        <div data-testid="composition-summary-legend" className="flex flex-wrap justify-center gap-x-3 gap-y-1">
                           {innerDonutData.map((d, i) => (
                             <div key={`${i}-${d.name}`} className="flex items-center gap-1.5">
                               <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
@@ -1385,13 +1635,17 @@ export default function ReportsPage() {
                       <button
                         key={opt}
                         onClick={() => { setSparklineView(opt); setSparklinePage(0) }}
-                        className={`px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                        aria-label={t(`reports.${opt}`)}
+                        className={`whitespace-nowrap px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                           sparklineView === opt
                             ? 'bg-primary text-primary-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                         }`}
                       >
-                        {t(`reports.${opt}`)}
+                        <span aria-hidden="true" className="sm:hidden">
+                          {t(`reports.${opt === 'byIncome' ? 'income' : 'expenses'}`)}
+                        </span>
+                        <span aria-hidden="true" className="hidden sm:inline">{t(`reports.${opt}`)}</span>
                       </button>
                     ))}
                   </div>

@@ -117,7 +117,7 @@ def check(versions_dir: Path) -> list[str]:
     # `ls versions/` reads in apply order.
     for rev in revisions:
         prefix = rev.name.split("_", 1)[0]
-        if prefix != rev.revision:
+        if not rev.name.startswith(f"{rev.revision}_"):
             errors.append(
                 f"{rev.name}: filename starts with {prefix!r} but the revision id "
                 f"is {rev.revision!r}; keep them the same so the directory sorts "

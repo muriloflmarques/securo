@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when the Alembic revision chain is not a single straight line.
+"""Fail when Alembic revisions have duplicate IDs or unjoined heads.
 
 Two long-lived branches that each add a migration pick the same next number
 without noticing: both say `revision = "074"`, both chain off `"073"`. Each
@@ -20,6 +20,7 @@ before any dependency is installed, and it never touches a database.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -29,14 +30,14 @@ VERSIONS_DIR = Path(__file__).resolve().parent.parent / "alembic" / "versions"
 # `revision: str = "074"` and `down_revision: Union[str, None] = "073"`, plus
 # the plain unannotated forms, single or double quoted.
 _REVISION_RE = re.compile(r"^revision(?:\s*:\s*[^=]+)?\s*=\s*['\"]([^'\"]+)['\"]", re.M)
-_DOWN_RE = re.compile(r"^down_revision(?:\s*:\s*[^=]+)?\s*=\s*(?:['\"]([^'\"]+)['\"]|None)", re.M)
+_DOWN_RE = re.compile(r"^down_revision(?:\s*:\s*[^=]+)?\s*=\s*(.+)$", re.M)
 
 
 class Revision:
-    def __init__(self, path: Path, revision: str, down_revision: str | None):
+    def __init__(self, path: Path, revision: str, down_revisions: tuple[str, ...]):
         self.path = path
         self.revision = revision
-        self.down_revision = down_revision
+        self.down_revisions = down_revisions
 
     @property
     def name(self) -> str:
@@ -63,7 +64,22 @@ def load_revisions(versions_dir: Path) -> tuple[list[Revision], list[str]]:
             errors.append(f"{path.name}: no `down_revision = ...` assignment found")
             continue
 
-        revisions.append(Revision(path, revision_match.group(1), down_match.group(1)))
+        try:
+            down_value = ast.literal_eval(down_match.group(1))
+        except (SyntaxError, ValueError):
+            errors.append(f"{path.name}: invalid `down_revision` assignment")
+            continue
+        if down_value is None:
+            down_revisions = ()
+        elif isinstance(down_value, str):
+            down_revisions = (down_value,)
+        elif isinstance(down_value, (tuple, list)) and all(isinstance(item, str) for item in down_value):
+            down_revisions = tuple(down_value)
+        else:
+            errors.append(f"{path.name}: invalid `down_revision` assignment")
+            continue
+
+        revisions.append(Revision(path, revision_match.group(1), down_revisions))
 
     return revisions, errors
 
@@ -89,12 +105,11 @@ def check(versions_dir: Path) -> list[str]:
 
     # A typo in down_revision, or a migration deleted out from under its child.
     for rev in revisions:
-        if rev.down_revision is not None and rev.down_revision not in by_revision:
-            errors.append(
-                f"{rev.name}: down_revision {rev.down_revision!r} does not exist"
-            )
+        for parent in rev.down_revisions:
+            if parent not in by_revision:
+                errors.append(f"{rev.name}: down_revision {parent!r} does not exist")
 
-    bases = [rev for rev in revisions if rev.down_revision is None]
+    bases = [rev for rev in revisions if not rev.down_revisions]
     if len(bases) != 1:
         listed = ", ".join(sorted(rev.name for rev in bases)) or "none"
         errors.append(
@@ -104,7 +119,7 @@ def check(versions_dir: Path) -> list[str]:
 
     # A head is a revision nothing chains off. More than one means the history
     # forked, which is what `alembic upgrade head` refuses to resolve.
-    parents = {rev.down_revision for rev in revisions if rev.down_revision}
+    parents = {parent for rev in revisions for parent in rev.down_revisions}
     heads = [rev for rev in revisions if rev.revision not in parents]
     if len(heads) != 1:
         listed = ", ".join(f"{rev.revision} ({rev.name})" for rev in sorted(heads, key=lambda r: r.name))
@@ -147,10 +162,10 @@ def main() -> int:
         return 1
 
     revisions, _ = load_revisions(versions_dir)
-    parents = {rev.down_revision for rev in revisions if rev.down_revision}
+    parents = {parent for rev in revisions for parent in rev.down_revisions}
     head = next(rev for rev in revisions if rev.revision not in parents)
     print(
-        f"Alembic revision chain is a single line: {len(revisions)} migrations, "
+        f"Alembic revision graph has one head: {len(revisions)} migrations, "
         f"head {head.revision} ({head.name})."
     )
     return 0

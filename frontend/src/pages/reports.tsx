@@ -1358,36 +1358,39 @@ export default function ReportsPage() {
       </div>
 
       {/* Breakdown: Donut + Grouped Bar */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
         {/* Composition widget — summary ring + ranked, labelled detail bars */}
         <div data-testid="report-composition" className={`rounded-xl border shadow-sm transition-colors ${selectedDate ? 'bg-primary/5 border-primary/50' : 'bg-card border-border'}`}>
-          <div className="px-5 pt-4 pb-2 flex flex-col items-center gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-1 sm:px-4">
-            <div className={selectedDate ? 'flex flex-col items-center sm:items-start' : 'hidden sm:flex sm:flex-col sm:items-start'}>
-              <p className="hidden sm:block text-sm font-semibold text-foreground">{t('reports.composition')}</p>
+          <div className="flex flex-col items-start gap-3 px-5 pt-4 pb-3">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <p className="text-sm font-semibold text-foreground">{t('reports.composition')}</p>
               {selectedDate && (
                 <span className="text-xs text-primary font-medium">{t('reports.asOf', { date: selectedDate })}</span>
               )}
             </div>
-            <div className="flex min-w-0 max-w-full flex-nowrap items-stretch overflow-x-auto rounded-lg border border-border bg-muted/30">
+            <div
+              className="grid w-full gap-1.5"
+              style={{ gridTemplateColumns: `repeat(${compositionOptions.length}, minmax(0, 1fr))` }}
+            >
               {compositionOptions.map((opt) => (
                 <button
                   key={opt}
                   type="button"
                   onClick={() => setCompositionView(opt)}
                   aria-label={t(`reports.${opt}`)}
-                  className={`shrink-0 whitespace-nowrap px-1.5 py-1 text-[11px] font-semibold text-center transition-colors ${
+                  className={`min-w-0 rounded-md border px-1.5 py-1.5 text-[11px] font-semibold transition-colors ${
                     compositionView === opt
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  <span aria-hidden="true" className="sm:hidden">
+                  <span aria-hidden="true" className="block truncate">
                     {opt === 'byIncome' ? t('reports.income')
                       : opt === 'byExpenses' ? t('reports.expenses')
                         : opt === 'byCategory' ? t('categories.title')
+                          : opt === 'netWorth' ? t('reports.net')
                           : t(`reports.${opt}`)}
                   </span>
-                  <span aria-hidden="true" className="hidden sm:inline">{t(`reports.${opt}`)}</span>
                 </button>
               ))}
             </div>

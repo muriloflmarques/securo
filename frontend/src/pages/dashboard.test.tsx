@@ -52,7 +52,8 @@ vi.mock('@/contexts/collection-filter-context', () => ({
 }))
 
 const workspace = vi.hoisted(() => ({ canWrite: true, transactionsEnabled: true }))
-vi.mock('@/contexts/workspace-context', () => ({
+vi.mock('@/contexts/workspace-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/workspace-context')>()),
   useWorkspace: () => ({
     canWrite: workspace.canWrite,
     hasModule: (module: string) => module === 'transactions' && workspace.transactionsEnabled,

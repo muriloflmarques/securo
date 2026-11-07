@@ -73,6 +73,9 @@ BODY_OVERRIDES: dict[tuple[str, str], Callable[[dict], Any]] = {
     ("POST", "/api/budgets/copy-month"): lambda w: {
         "source_month": "2026-04-01", "target_month": "2026-05-01",
     },
+    ("POST", "/api/recurring-transactions/{recurring_id}/materialize"): lambda w: {
+        "date": "2099-12-01",
+    },
     ("POST", "/api/payees/merge"): lambda w: {
         "source_ids": [w["second_payee_id"]], "target_id": w["payee_id"],
     },

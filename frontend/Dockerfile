@@ -9,7 +9,8 @@ COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+# Normalize the nginx startup script when building from a Windows checkout.
+RUN sed -i 's/\r$//' docker-entrypoint.d/19-resolver.envsh && npm run build
 
 # Serve with nginx
 FROM nginxinc/nginx-unprivileged:alpine
@@ -23,6 +24,6 @@ COPY default.conf.template /etc/nginx/templates/default.conf.template
 # NGINX_RESOLVER (with a Docker fallback) for the config template; setting
 # NGINX_RESOLVER explicitly still overrides both.
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
-COPY --chmod=755 docker-entrypoint.d/19-resolver.envsh /docker-entrypoint.d/
+COPY --from=build --chmod=755 /app/docker-entrypoint.d/19-resolver.envsh /docker-entrypoint.d/
 
 EXPOSE 8080

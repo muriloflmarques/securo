@@ -11,6 +11,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 
+import { formatCompactCurrency } from '@/lib/format'
 import AccountDetailPage from '@/pages/account-detail'
 import { renderWithProviders } from '@/test/utils'
 import type { Transaction } from '@/types'
@@ -177,8 +178,8 @@ describe('a non-credit-card account with more rows than one page', () => {
 
     await renderPage()
 
-    // The axis ticks are compact, so the series shows up as "R$20.0K".
-    expect(await screen.findByText('R$20.0K')).toBeInTheDocument()
+    // The axis uses locale-aware compact currency for the server's series.
+    expect(await screen.findByText(formatCompactCurrency(20000, 'BRL', 'en-US'))).toBeInTheDocument()
     expect(api.accounts.runningBalance).toHaveBeenCalledWith('acc-1', '2026-09-01', '2026-09-30')
   })
 })

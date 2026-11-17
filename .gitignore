@@ -11,6 +11,8 @@ docs/plans/
 tmp/
 frontend/.tmp/
 docker-compose.override.yml
+.idea
+.junie
 
 # Ignore local configuration files
 .vscode/

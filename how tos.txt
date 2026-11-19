@@ -14,7 +14,7 @@ docker cp securo-db-1:/tmp/securo_backup.dump .\2026-10-05_securo_backup_02.dump
 Don't forget to merge from upstream on main branc
 
 -----------------------------------------------------------------------
-Once on Linux, navigate to "repo/securo" and then run
+Once on Linux, navigate to "cd repo/securo" and then run
 	git pull
 
 Now it's necessary to build the image again without cache

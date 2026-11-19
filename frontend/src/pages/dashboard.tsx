@@ -1020,13 +1020,13 @@ export default function DashboardPage() {
         uncategorizedCount > 0 ? (
           <button
             type="button"
-            className="w-full flex items-center justify-between gap-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-4 py-2.5 mb-5 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+            className="flex w-full min-w-0 flex-col items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 mb-5 text-left cursor-pointer transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
             onClick={() => setDrillDown({
               title: t('dashboard.drillDownUncategorized'),
               uncategorized: true,
             })}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex w-full min-w-0 items-center gap-2.5 sm:w-auto">
               {/* An icon, not the count: the sentence beside it already states
                   the number, and a fixed 24px circle clipped it from four
                   digits on. Severity still reads through the tint. */}
@@ -1056,8 +1056,8 @@ export default function DashboardPage() {
       {/* Charts: Category Spending Bars + Balance Evolution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5" style={{ gridAutoRows: 'minmax(380px, auto)' }}>
         {/* Category Spending Bars */}
-        <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col max-h-[420px]">
-          <div className="px-5 py-4 border-b border-border shrink-0 flex items-center justify-between">
+        <div className="min-w-0 bg-card rounded-xl border border-border shadow-sm flex flex-col max-h-[420px]">
+          <div className="px-5 py-4 border-b border-border shrink-0 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-foreground">{t('dashboard.spendingByCategory')}</p>
             <button
               onClick={() => setCatSortDesc(v => !v)}
@@ -1095,12 +1095,12 @@ export default function DashboardPage() {
                         to: monthEnd,
                       })}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
                         <CategoryIcon icon={item.category_icon} color={item.category_color} size="lg" />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex flex-col items-start gap-1 mb-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                             <span className="text-sm font-semibold text-foreground truncate">{item.category_name}</span>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                               <span className="text-sm font-bold tabular-nums text-foreground">{mask(formatCurrency(item.actual, userCurrency, locale))}</span>
                               {item.momPct !== null && (
                                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${item.momPct > 0 ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400' : item.momPct < 0 ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-muted text-muted-foreground'
@@ -1137,7 +1137,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Cumulative Spending Comparison */}
-        <div className="bg-card rounded-xl border border-border shadow-sm max-h-[420px] flex flex-col">
+        <div className="min-w-0 bg-card rounded-xl border border-border shadow-sm max-h-[420px] flex flex-col">
           <div className="px-5 pt-5 pb-3 shrink-0">
             <div className="flex items-start justify-between mb-0.5">
               <div>

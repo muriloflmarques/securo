@@ -1477,7 +1477,7 @@ export default function DashboardPage() {
       )
     ),
     'transactions': (
-      <div>
+      <div className="min-w-0 max-w-full">
         {/* One control bar for both views, so the switch never moves between them. */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-foreground">{t('dashboard.periodTransactions')}</p>
@@ -1518,7 +1518,7 @@ export default function DashboardPage() {
         )}
 
         {txViewMode === 'list' && (
-          <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+          <div className="w-full min-w-0 max-w-full bg-card rounded-xl border border-border shadow-sm overflow-hidden">
             {txListLoading ? (
               <div className="p-5 space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -1532,7 +1532,7 @@ export default function DashboardPage() {
                     {pagedRows.map((row) => (
                       <div
                         key={row.key}
-                        className={`flex items-center gap-3 pl-3 pr-3 py-3 border-b border-border last:border-0 bg-card ${row.isProjected ? '' : 'cursor-pointer active:bg-muted/60'
+                        className={`flex min-w-0 items-center gap-3 pl-3 pr-3 py-3 border-b border-border last:border-0 bg-card ${row.isProjected ? '' : 'cursor-pointer active:bg-muted/60'
                           }`}
                         onClick={() => {
                           if (row.isProjected) return

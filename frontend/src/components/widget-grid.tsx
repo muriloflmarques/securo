@@ -201,7 +201,7 @@ function SortableWidget({
       style={style}
       aria-label={title}
       className={cn(
-        'relative grid',
+        'relative grid min-w-0',
         SPAN_CLASS[shownSpan],
         entry.tall && 'min-h-[380px]',
         // While editing, each widget sits in a frame with its own header, so
